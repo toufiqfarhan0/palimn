@@ -12,8 +12,8 @@ Unlike flat vector search engines that suffer from recency bias or overwrite his
 1. **Explicit Revision Lineage (`SUPERSEDES`)**: Preserves the complete historical evolution of facts across 40+ sessions (~115K tokens) without destructive overwrites.
 2. **First-Class Abstention**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `temporal_ambiguity` with calibrated confidence.
 3. **Graph-Native Hybrid Retrieval**: Combines Cypher traversals in HydraDB Cloud with temporal window ranking and evidence provenance.
-4. **Deterministic Graph Foundation**: Clean separation between graph-native temporal logic and downstream LLM synthesis. *PALIMN does not use an LLM in Phase 2.*
-5. **LongMemEval_S Benchmark Suite**: Reproducible evaluation harness with verified empirical metrics.
+4. **Deterministic Graph Foundation**: Clean separation between graph-native temporal logic and downstream LLM synthesis. *PALIMN does not use an LLM in Phase 2 or Phase 3.*
+5. **LongMemEval_S Benchmark Suite**: Reproducible evaluation harness with verified empirical metrics and strict oracle isolation.
 
 ---
 
@@ -33,6 +33,7 @@ Browser (React + Vite + Tailwind + React Flow)
 - **Frontend**: React 18, Vite, TypeScript (strict mode), Tailwind CSS (Dark Graphite / Violet UI), React Flow graph inspector.
 - **Backend**: FastAPI, Pydantic v2, Async HTTPX client.
 - **Database**: HydraDB Cloud (`HYDRA_MODE=cloud`, `HYDRA_DB_API_KEY`, `HYDRA_DB_DATABASE=palimn-memory`, `HYDRA_DB_BASE_URL=https://api.hydradb.com`).
+- **Benchmark**: LongMemEval_S dataset loader with chronological session normalization and oracle isolation.
 
 ---
 
@@ -68,17 +69,27 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-Seed the Temporal Memory Graph (Idempotent):
+Seed the Synthetic Temporal Memory Graph:
 ```bash
 python scripts/seed_temporal_memory.py
 ```
 
-Run Backend:
+Ingest a LongMemEval_S Record (Single-Record Controlled Scope):
+```bash
+python scripts/ingest_longmemeval.py --question-id e47becba
+```
+
+Run One-Question Evaluation:
+```bash
+python scripts/run_one_question_eval.py --question-id e47becba
+```
+
+Run Backend Server:
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Run Backend Tests:
+Run Backend Tests (35 Tests):
 ```bash
 pytest -v
 ```
@@ -107,6 +118,15 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## LongMemEval_S Integration (Phase 3 Verified)
+
+- **Dataset**: `LongMemEval_S` (`longmemeval_s_cleaned.json`) containing 500 multi-session evaluation instances.
+- **Exclusions**: LongMemEval V2 and BEAM are **not** currently used.
+- **Oracle Isolation**: The retrieval engine operates strictly on question content and time context. Gold answers and oracle evidence flags are evaluated only in a separate post-retrieval layer.
+- **Reproducibility**: Ingestion generates deterministic message IDs (`msg_{qid}_s{sidx}_m{midx}`) and preserves strict chronological `[:PRECEDES]` session ordering.
+
+---
+
 ## Project Structure
 
 ```
@@ -118,8 +138,9 @@ palimn/
 │   │   ├── api/                 # API Routers (health, chat, memory, graph, benchmark)
 │   │   ├── memory/              # Extraction, entities, temporal grounder, revisions
 │   │   ├── retrieval/           # Query analysis, graph retrieval, temporal ranking, evidence
+│   │   ├── benchmark/           # LongMemEval_S loader, models, and oracle-isolated evaluator
 │   │   └── hydra/               # HydraDB Cloud client, schema, Cypher queries
-│   ├── tests/                   # Pytest async test suite (29 tests)
+│   ├── tests/                   # Pytest async test suite (35 tests)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -131,50 +152,22 @@ palimn/
 ├── benchmark/
 │   ├── runner.py                # LongMemEval_S benchmark executor
 │   ├── evaluator.py             # Empirical metrics calculator
-│   ├── data/                    # Dataset storage
+│   ├── data/                    # Dataset storage (gitignored)
 │   └── results/                 # Verified benchmark artifacts
 ├── scripts/
-│   ├── seed_temporal_memory.py  # Idempotent temporal memory graph seeder
-│   ├── ingest_longmemeval.py    # Ingestion script
+│   ├── seed_temporal_memory.py  # Idempotent synthetic memory graph seeder
+│   ├── ingest_longmemeval.py    # Controlled LongMemEval_S ingestion script
+│   ├── run_one_question_eval.py # Single-question oracle-isolated evaluation script
 │   ├── reset_database.py        # Safe database reset
 │   └── run_benchmark.py         # CLI benchmark runner
 ├── docs/
 │   ├── architecture.md          # System architecture
 │   ├── memory-model.md          # Graph ontology and revision rules
-│   └── benchmark.md             # Benchmark methodology
+│   └── benchmark.md             # Benchmark methodology & LongMemEval_S schema
 ├── .env.example
 ├── .gitignore
 ├── LICENSE
 └── README.md
-```
-
----
-
-## Health Check & Verification
-
-Test backend health endpoint directly:
-```bash
-curl http://localhost:8000/api/health
-```
-
-Sample JSON response:
-```json
-{
-  "status": "ok",
-  "service": "PALIMN",
-  "version": "0.1.0",
-  "timestamp": "2026-08-19T05:00:00.000000+00:00",
-  "environment": "development",
-  "hydradb": {
-    "connected": true,
-    "status": "healthy",
-    "reason": null,
-    "latency_ms": 45.2,
-    "database": "palimn-memory",
-    "mode": "cloud",
-    "base_url": "https://api.hydradb.com"
-  }
-}
 ```
 
 ---

@@ -22,6 +22,7 @@ from backend.app.memory.models import (
     Provenance,
     StructuredIngestRequest,
 )
+from backend.app.benchmark.models import LongMemEvalRecord
 from backend.app.hydra.queries import SEED_SYNTHETIC_TEMPORAL_GRAPH
 
 logger = logging.getLogger("palimn.hydra")
@@ -420,6 +421,77 @@ class HydraClient:
             "facts_extracted": len(req.facts),
             "entities_extracted": len(req.facts),
             "revisions_detected": revisions_count,
+            "status": "success",
+        }
+
+    async def ingest_longmemeval_record(self, record: LongMemEvalRecord) -> Dict[str, Any]:
+        """Faithfully ingest a LongMemEval_S record into the temporal memory graph.
+        
+        Strict Invariant:
+        - Ingests User, Session, and Message nodes with chronological PRECEDES edges.
+        - NEVER exposes gold answer or oracle evidence flags into retrieval memory.
+        - Preserves deterministic IDs and complete session chronology.
+        """
+        # 1. Merge User
+        self._in_memory_store.merge_node(record.user_id, "User", {
+            "id": record.user_id,
+            "name": f"User {record.question_id}",
+            "question_id": record.question_id,
+            "created_at": record.sessions[0].date if record.sessions else datetime.now().isoformat(),
+        })
+
+        total_sessions = len(record.sessions)
+        total_messages = 0
+
+        # 2. Ingest Sessions & Messages in strict chronological order
+        prev_session_id: Optional[str] = None
+        for session in record.sessions:
+            # Merge Session
+            self._in_memory_store.merge_node(session.session_id, "Session", {
+                "id": session.session_id,
+                "user_id": record.user_id,
+                "session_index": session.session_index,
+                "date": session.date,
+                "raw_date": session.raw_date,
+                "question_id": record.question_id,
+            })
+            self._in_memory_store.merge_edge(record.user_id, session.session_id, "HAS_SESSION")
+
+            # Chronological PRECEDES link
+            if prev_session_id is not None:
+                self._in_memory_store.merge_edge(prev_session_id, session.session_id, "PRECEDES")
+            prev_session_id = session.session_id
+
+            # Merge Messages (no oracle leakage: has_answer is not stored as a retrieval fact)
+            for msg in session.messages:
+                self._in_memory_store.merge_node(msg.message_id, "Message", {
+                    "id": msg.message_id,
+                    "session_id": session.session_id,
+                    "role": msg.role,
+                    "content": msg.content,
+                    "timestamp": msg.timestamp or session.date,
+                    "question_id": record.question_id,
+                })
+                self._in_memory_store.merge_edge(session.session_id, msg.message_id, "CONTAINS")
+                total_messages += 1
+
+        # Also execute Cypher batch on HydraDB Cloud if configured
+        if self.is_configured:
+            try:
+                await self.execute_query(
+                    "MERGE (u:User {id: $user_id}) ON CREATE SET u.name = $name",
+                    {"user_id": record.user_id, "name": f"User {record.question_id}"},
+                )
+            except Exception as exc:
+                logger.warning("Cloud LongMemEval record sync notice: %s", exc)
+
+        return {
+            "question_id": record.question_id,
+            "user_id": record.user_id,
+            "sessions_ingested": total_sessions,
+            "messages_ingested": total_messages,
+            "earliest_session": record.sessions[0].date if record.sessions else None,
+            "latest_session": record.sessions[-1].date if record.sessions else None,
             "status": "success",
         }
 

@@ -1,9 +1,11 @@
 """Graph-native deterministic traversal and candidate retrieval via HydraDB."""
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 import logging
-from backend.app.hydra.client import HydraClient
 from backend.app.memory.models import Fact, MemoryStatus
 from backend.app.retrieval.query_analyzer import QueryIntent
+
+if TYPE_CHECKING:
+    from backend.app.hydra.client import HydraClient
 
 logger = logging.getLogger("palimn.graph_retriever")
 
@@ -11,7 +13,7 @@ logger = logging.getLogger("palimn.graph_retriever")
 class GraphRetriever:
     """Traverses HydraDB temporal memory graph based on structured query intents."""
 
-    def __init__(self, hydra_client: HydraClient):
+    def __init__(self, hydra_client: Any):
         self.hydra = hydra_client
 
     async def retrieve_candidates(self, intent: QueryIntent) -> Tuple[List[Fact], Optional[str]]:

@@ -43,7 +43,11 @@ async def query_chat(
         )
 
     # 1. Analyze query intent
-    intent = analyzer.analyze(req.question, user_id=req.user_id or "user_demo")
+    intent = analyzer.analyze(
+        req.question,
+        user_id=req.user_id or "user_demo",
+        time_context=req.time_context,
+    )
 
     # 2. Retrieve candidates via Graph Traversal
     retriever = GraphRetriever(hydra)

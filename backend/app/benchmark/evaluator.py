@@ -26,7 +26,11 @@ class LongMemEvalEvaluator:
         # RETRIEVAL PHASE (STRICTLY NO ACCESS TO GOLD ANSWER/EVIDENCE)
         # ==========================================================
         # Only query text, user id, and question date are passed into retrieval
-        intent = self.analyzer.analyze(record.question, user_id=record.user_id)
+        intent = self.analyzer.analyze(
+            record.question,
+            user_id=record.user_id,
+            time_context=record.question_date,
+        )
         retriever = GraphRetriever(self.hydra)
         candidates, reasoning = await retriever.retrieve_candidates(intent)
 

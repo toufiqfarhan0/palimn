@@ -541,9 +541,11 @@ class HydraClient:
         if active_fact:
             for edge in self._in_memory_store.edges:
                 if edge.get("type") == "SUPERSEDES" and edge.get("source") == active_fact.memory_id:
-                    target_node = self._in_memory_store.nodes.get(edge.get("target"))
-                    if target_node:
-                        return self._node_to_fact(target_node)
+                    target_id = edge.get("target")
+                    if target_id:
+                        target_node = self._in_memory_store.nodes.get(str(target_id))
+                        if target_node:
+                            return self._node_to_fact(target_node)
 
         for node in self._in_memory_store.nodes.values():
             if node.get("label") == "Fact":
@@ -682,7 +684,11 @@ class HydraClient:
         if self.mode == "cloud" and self.is_configured:
             try:
                 sources = await self.cloud_store.list_sources(page_size=100)
-                source_ids = [s.get("memory_id") or s.get("id") for s in sources if s.get("memory_id") or s.get("id")]
+                source_ids: List[str] = [
+                    str(s.get("memory_id") or s.get("id"))
+                    for s in sources
+                    if s.get("memory_id") or s.get("id")
+                ]
                 if source_ids:
                     await self.cloud_store.delete_sources(source_ids)
             except Exception as exc:

@@ -66,7 +66,7 @@ class LongMemEvalEvaluator:
         # EVALUATION PHASE (POST-RETRIEVAL ORACLE COMPARISON ONLY)
         # ==========================================================
         expected_str = str(record.answer).strip().lower() if record.answer is not None else ""
-        pred_str = str(prediction).strip().lower() if prediction is not None else ""
+        pred_str = prediction.strip().lower() if prediction is not None else ""
 
         is_abstention_q = record.question_id.endswith("_abs") or (record.answer is None)
         

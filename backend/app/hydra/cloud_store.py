@@ -134,7 +134,8 @@ class HydraCloudStore:
         current_chars = 0
         
         for item in formatted_items:
-            item_chars = len(item["text"])
+            item_text = str(item.get("text") or "")
+            item_chars = len(item_text)
             if current_chunk and (current_chars + item_chars > 2000 or len(current_chunk) >= 5):
                 chunks.append(current_chunk)
                 current_chunk = [item]

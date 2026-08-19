@@ -52,6 +52,8 @@ class BenchmarkRunner:
             # Evaluate (strict oracle isolation)
             eval_res = await self.evaluator.evaluate_record(rec)
             results.append(eval_res)
+            if idx % 50 == 0 or idx == len(records):
+                logger.info("Progress: [%d/%d] records evaluated...", idx, len(records))
 
         # 3. Calculate Aggregate Metrics
         total = len(results)

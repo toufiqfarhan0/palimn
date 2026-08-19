@@ -34,6 +34,7 @@ class InMemoryGraphStore:
     def __init__(self):
         self.nodes: Dict[str, Dict[str, Any]] = {}
         self.edges: List[Dict[str, Any]] = []
+        self.edges_by_key: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
         self.messages_by_user: Dict[str, List[Dict[str, Any]]] = {}
         self.messages_by_question: Dict[str, List[Dict[str, Any]]] = {}
         self.all_messages: List[Dict[str, Any]] = []
@@ -41,6 +42,7 @@ class InMemoryGraphStore:
     def clear(self):
         self.nodes.clear()
         self.edges.clear()
+        self.edges_by_key.clear()
         self.messages_by_user.clear()
         self.messages_by_question.clear()
         self.all_messages.clear()
@@ -68,12 +70,12 @@ class InMemoryGraphStore:
     def merge_edge(
         self, source_id: str, target_id: str, rel_type: str, properties: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        # Check if identical relationship already exists
-        for edge in self.edges:
-            if edge["source"] == source_id and edge["target"] == target_id and edge["type"] == rel_type:
-                if properties:
-                    edge["properties"].update(properties)
-                return edge
+        key = (source_id, target_id, rel_type)
+        if key in self.edges_by_key:
+            edge = self.edges_by_key[key]
+            if properties:
+                edge["properties"].update(properties)
+            return edge
         
         edge_id = f"e_{source_id}_{rel_type}_{target_id}"
         new_edge = {
@@ -84,6 +86,7 @@ class InMemoryGraphStore:
             "properties": properties or {},
         }
         self.edges.append(new_edge)
+        self.edges_by_key[key] = new_edge
         return new_edge
 
     def seed_synthetic_data(self) -> Dict[str, int]:

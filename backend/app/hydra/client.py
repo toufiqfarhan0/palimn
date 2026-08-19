@@ -467,10 +467,11 @@ class HydraClient:
                 self._in_memory_store.merge_node(msg.message_id, "Message", {
                     "id": msg.message_id,
                     "session_id": session.session_id,
+                    "user_id": record.user_id,
+                    "question_id": record.question_id,
                     "role": msg.role,
                     "content": msg.content,
                     "timestamp": msg.timestamp or session.date,
-                    "question_id": record.question_id,
                 })
                 self._in_memory_store.merge_edge(session.session_id, msg.message_id, "CONTAINS")
                 total_messages += 1
@@ -629,6 +630,34 @@ class HydraClient:
             "total_nodes": len(nodes),
             "total_edges": len(edges),
         }
+
+    def get_graph_snapshot(self) -> GraphResponse:
+        """Synchronously return current graph repository node/edge snapshot."""
+        nodes = [
+            GraphNode(
+                id=n["id"],
+                label=n.get("label", "Node"),
+                name=n.get("properties", {}).get("name") or n.get("properties", {}).get("id") or n["id"],
+                properties=n.get("properties", {}),
+            )
+            for n in self._in_memory_store.nodes.values()
+        ]
+        edges = [
+            GraphEdge(
+                id=e.get("id") or f"{e['source']}_{e['type']}_{e['target']}",
+                source=e["source"],
+                target=e["target"],
+                type=e["type"],
+                properties=e.get("properties", {}),
+            )
+            for e in self._in_memory_store.edges
+        ]
+        return GraphResponse(
+            nodes=nodes,
+            edges=edges,
+            total_nodes=len(nodes),
+            total_edges=len(edges),
+        )
 
     async def reset_database(self) -> Dict[str, Any]:
         """Safely clear database data."""

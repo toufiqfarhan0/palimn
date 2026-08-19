@@ -1,10 +1,11 @@
 """Evaluation engine for comparing retrieval results against LongMemEval gold answers."""
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 from backend.app.benchmark.models import EvaluationResult, LongMemEvalRecord
+from backend.app.memory.fact_extractor import DeterministicFactExtractor
+from backend.app.retrieval.candidate_retriever import CandidateRetriever
 from backend.app.retrieval.graph_retriever import GraphRetriever
-from backend.app.retrieval.query_analyzer import QueryAnalyzer
-from backend.app.retrieval.evidence import EvidenceAggregator
+from backend.app.retrieval.query_analyzer import QueryAnalyzer, QueryIntent
 
 if TYPE_CHECKING:
     from backend.app.hydra.client import HydraClient
@@ -16,32 +17,44 @@ class LongMemEvalEvaluator:
     def __init__(self, hydra_client: Any):
         self.hydra = hydra_client
         self.analyzer = QueryAnalyzer()
-        self.evidence_agg = EvidenceAggregator()
+        self.extractor = DeterministicFactExtractor()
+        self.candidate_retriever = CandidateRetriever(self.hydra)
+        self.graph_retriever = GraphRetriever(self.hydra)
 
     async def evaluate_record(self, record: LongMemEvalRecord) -> EvaluationResult:
         """Run single record evaluation with strict separation between retrieval and oracle."""
-        start_time = time.perf_counter()
+        t_start = time.perf_counter()
 
         # ==========================================================
         # RETRIEVAL PHASE (STRICTLY NO ACCESS TO GOLD ANSWER/EVIDENCE)
         # ==========================================================
-        # Only query text, user id, and question date are passed into retrieval
-        intent = self.analyzer.analyze(
+        # 1. Query Analysis
+        t_qa_start = time.perf_counter()
+        intent: QueryIntent = self.analyzer.analyze(
             record.question,
             user_id=record.user_id,
             time_context=record.question_date,
         )
-        retriever = GraphRetriever(self.hydra)
-        candidates, reasoning = await retriever.retrieve_candidates(intent)
+        t_qa_ms = round((time.perf_counter() - t_qa_start) * 1000, 2)
 
-        latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        # 2. Candidate Retrieval & Scoring
+        t_ret_start = time.perf_counter()
+        candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
+        t_ret_ms = round((time.perf_counter() - t_ret_start) * 1000, 2)
 
-        if candidates:
-            prediction = candidates[0].object
+        # 3. Fact Extraction & Resolution
+        t_fe_start = time.perf_counter()
+        retrieved_facts, reasoning = await self.graph_retriever.retrieve_candidates(intent)
+        t_fe_ms = round((time.perf_counter() - t_fe_start) * 1000, 2)
+
+        t_total_ms = round((time.perf_counter() - t_start) * 1000, 2)
+
+        if retrieved_facts:
+            prediction = retrieved_facts[0].object
             decision = "answerable"
-            confidence = candidates[0].confidence
-            retrieved_memory_ids = [c.memory_id for c in candidates]
-            retrieved_session_ids = [c.session_id for c in candidates]
+            confidence = retrieved_facts[0].confidence
+            retrieved_memory_ids = [f.memory_id for f in retrieved_facts]
+            retrieved_session_ids = [f.session_id for f in retrieved_facts]
         else:
             prediction = None
             decision = "abstain"
@@ -55,29 +68,73 @@ class LongMemEvalEvaluator:
         expected_str = str(record.answer).strip().lower() if record.answer is not None else ""
         pred_str = str(prediction).strip().lower() if prediction is not None else ""
 
-        is_abstention_q = record.question_id.endswith("_abs")
+        is_abstention_q = record.question_id.endswith("_abs") or (record.answer is None)
         
+        # Calculate Top-K Retrieval Recall against gold answer session IDs
+        target_session_ids = set(record.answer_session_ids)
+        cand_sids_1 = {c.session_id for c in candidates[:1]}
+        cand_sids_5 = {c.session_id for c in candidates[:5]}
+        cand_sids_10 = {c.session_id for c in candidates[:10]}
+        cand_sids_20 = {c.session_id for c in candidates[:20]}
+
+        top_1_recall = bool(target_session_ids & cand_sids_1) if target_session_ids else False
+        top_5_recall = bool(target_session_ids & cand_sids_5) if target_session_ids else False
+        top_10_recall = bool(target_session_ids & cand_sids_10) if target_session_ids else False
+        top_20_recall = bool(target_session_ids & cand_sids_20) if target_session_ids else False
+
         if is_abstention_q:
             abstention_correct = (decision == "abstain")
             exact_match = abstention_correct
+            partial_match = exact_match
         else:
             abstention_correct = False
             exact_match = (
                 bool(pred_str) and (pred_str in expected_str or expected_str in pred_str)
             )
+            # Partial token overlap match
+            pred_tokens = set(pred_str.split())
+            exp_tokens = set(expected_str.split())
+            partial_match = exact_match or (bool(pred_tokens & exp_tokens))
+
+        # Failure Classification
+        failure_cat = None
+        if not exact_match:
+            if intent.query_type == "unknown":
+                failure_cat = "query_understanding"
+            elif not top_20_recall and target_session_ids:
+                failure_cat = "candidate_retrieval"
+            elif top_20_recall and not retrieved_facts:
+                failure_cat = "fact_extraction"
+            elif retrieved_facts and not exact_match:
+                failure_cat = "fact_extraction"
+            elif is_abstention_q and decision != "abstain":
+                failure_cat = "abstention"
+            else:
+                failure_cat = "other"
 
         return EvaluationResult(
             question_id=record.question_id,
             question=record.question,
+            question_type=record.question_type,
+            question_date=record.question_date,
             prediction=prediction,
             decision=decision,
             confidence=confidence,
             retrieved_memory_ids=retrieved_memory_ids,
             retrieved_session_ids=retrieved_session_ids,
-            latency_ms=latency_ms,
+            evidence_count=len(retrieved_facts),
+            top_1_recall=top_1_recall,
+            top_5_recall=top_5_recall,
+            top_10_recall=top_10_recall,
+            top_20_recall=top_20_recall,
             expected_answer=str(record.answer) if record.answer is not None else None,
-            question_type=record.question_type,
             exact_match=exact_match,
+            partial_match=partial_match,
             is_abstention=is_abstention_q,
             abstention_correct=abstention_correct,
+            failure_category=failure_cat,
+            query_analysis_latency_ms=t_qa_ms,
+            retrieval_latency_ms=t_ret_ms,
+            extraction_latency_ms=t_fe_ms,
+            total_latency_ms=t_total_ms,
         )

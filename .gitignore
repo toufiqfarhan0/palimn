@@ -69,7 +69,8 @@ Thumbs.db
 *.sublime-project
 
 # Benchmark artifacts / datasets / temporary cache
-benchmark/results/*.raw.json
+benchmark/results/
+results/
 benchmark/data/
 data/
 datasets/

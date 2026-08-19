@@ -15,15 +15,10 @@ async def get_graph_data(
     hydra: HydraClient = Depends(get_hydra_client),
 ) -> GraphResponse:
     """Retrieve temporal memory graph nodes and relationships for React Flow visualization."""
-    if not hydra.is_configured:
-        # Return empty structured graph when HydraDB is not configured
-        return GraphResponse(nodes=[], edges=[], total_nodes=0, total_edges=0)
-
     try:
         raw_graph = await hydra.get_graph(limit=limit)
-        # Parse into GraphResponse format
-        nodes = raw_graph.get("nodes", [])
-        edges = raw_graph.get("edges", [])
+        nodes = [GraphNode(**n) for n in raw_graph.get("nodes", [])]
+        edges = [GraphEdge(**e) for e in raw_graph.get("edges", [])]
         return GraphResponse(
             nodes=nodes,
             edges=edges,

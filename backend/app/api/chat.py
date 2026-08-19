@@ -7,11 +7,15 @@ from backend.app.memory.models import (
     ChatQueryResponse,
     DecisionType,
     AbstainReason,
-    EvidenceItem,
-    MemoryStatus,
 )
+from backend.app.retrieval.query_analyzer import QueryAnalyzer
+from backend.app.retrieval.graph_retriever import GraphRetriever
+from backend.app.retrieval.evidence import EvidenceAggregator
 
 router = APIRouter(tags=["Chat"])
+
+analyzer = QueryAnalyzer()
+evidence_agg = EvidenceAggregator()
 
 
 @router.post("/chat", response_model=ChatQueryResponse)
@@ -21,12 +25,10 @@ async def query_chat(
 ) -> ChatQueryResponse:
     """Process a user question against the temporal memory graph.
     
-    Returns answer or first-class structured abstention with complete evidence provenance.
+    Returns deterministic answer or first-class structured abstention with complete evidence provenance.
     """
     start_time = time.perf_counter()
 
-    # Note: Full retrieval engine integrated in Phase 6-8.
-    # Stub response returns clean structured response demonstrating abstention & answering contracts.
     if not req.question.strip():
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
         return ChatQueryResponse(
@@ -40,21 +42,31 @@ async def query_chat(
             latency_ms=latency_ms,
         )
 
-    # If Hydra is not configured, inform through abstention reason
-    if not hydra.is_configured:
-        latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    # 1. Analyze query intent
+    intent = analyzer.analyze(req.question, user_id=req.user_id or "user_demo")
+
+    # 2. Retrieve candidates via Graph Traversal
+    retriever = GraphRetriever(hydra)
+    candidates, reasoning = await retriever.retrieve_candidates(intent)
+
+    latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+    # 3. Formulate Answer or Abstain
+    if candidates:
+        primary_fact = candidates[0]
+        evidence_items = evidence_agg.bundle_evidence(candidates)
         return ChatQueryResponse(
             question=req.question,
-            decision=DecisionType.ABSTAIN,
-            reason="hydradb_unconfigured",
-            answer=None,
-            confidence=0.0,
-            evidence=[],
-            temporal_reasoning="HydraDB Cloud credentials not configured. Please configure .env with HYDRA_DB_BASE_URL and HYDRA_DB_API_KEY.",
+            decision=DecisionType.ANSWERABLE,
+            reason=None,
+            answer=primary_fact.object,
+            confidence=primary_fact.confidence,
+            evidence=evidence_items,
+            temporal_reasoning=reasoning,
             latency_ms=latency_ms,
         )
 
-    latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    # Abstention when no fact satisfies query intent
     return ChatQueryResponse(
         question=req.question,
         decision=DecisionType.ABSTAIN,
@@ -62,6 +74,6 @@ async def query_chat(
         answer=None,
         confidence=0.0,
         evidence=[],
-        temporal_reasoning="No relevant memories found in current temporal graph.",
+        temporal_reasoning=reasoning or "No matching memory found in temporal graph.",
         latency_ms=latency_ms,
     )

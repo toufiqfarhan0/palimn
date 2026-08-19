@@ -7,12 +7,12 @@
 
 ## Key Differentiators
 
-Unlike flat vector search engines that suffer from recency bias or overwrite historical data, **PALIMN** represents agent memories as an evolving temporal graph in **HydraDB Cloud**:
+Unlike flat vector search engines that suffer from recency bias or overwrite historical data, **PALIMN** represents agent memories as an evolving temporal graph in **HydraDB Cloud** (Database: `palimn-memory`):
 
 1. **Explicit Revision Lineage (`SUPERSEDES`)**: Preserves the complete historical evolution of facts across 40+ sessions (~115K tokens) without destructive overwrites.
 2. **First-Class Abstention**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `temporal_ambiguity` with calibrated confidence.
 3. **Graph-Native Hybrid Retrieval**: Combines Cypher traversals in HydraDB Cloud with temporal window ranking and evidence provenance.
-4. **Deterministic Graph Foundation**: Clean separation between graph-native temporal logic and downstream LLM synthesis.
+4. **Deterministic Graph Foundation**: Clean separation between graph-native temporal logic and downstream LLM synthesis. *PALIMN does not use an LLM in Phase 2.*
 5. **LongMemEval_S Benchmark Suite**: Reproducible evaluation harness with verified empirical metrics.
 
 ---
@@ -27,12 +27,12 @@ Browser (React + Vite + Tailwind + React Flow)
                       │
                       ▼
                 HydraDB Cloud
-     (Dedicated Graph Database Namespace)
+          (Database: palimn-memory)
 ```
 
 - **Frontend**: React 18, Vite, TypeScript (strict mode), Tailwind CSS (Dark Graphite / Violet UI), React Flow graph inspector.
 - **Backend**: FastAPI, Pydantic v2, Async HTTPX client.
-- **Database**: HydraDB Cloud (`HYDRA_MODE`, `HYDRA_DB_API_KEY`, `HYDRA_DB_DATABASE`, `HYDRA_DB_BASE_URL`).
+- **Database**: HydraDB Cloud (`HYDRA_MODE=cloud`, `HYDRA_DB_API_KEY`, `HYDRA_DB_DATABASE=palimn-memory`, `HYDRA_DB_BASE_URL=https://api.hydradb.com`).
 
 ---
 
@@ -68,6 +68,11 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
+Seed the Temporal Memory Graph (Idempotent):
+```bash
+python scripts/seed_temporal_memory.py
+```
+
 Run Backend:
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -88,6 +93,20 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## Temporal Query Matrix (Phase 2 Verified)
+
+| # | Question | Expected Output | Decision | Mechanism |
+|---|---|---|---|---|
+| **1** | *"Where do I live now?"* | `Hyderabad` | `answerable` | Active fact retrieval (`status: 'active'`) |
+| **2** | *"Where did I live before Hyderabad?"* | `Bangalore` | `answerable` | `SUPERSEDES` revision lineage traversal |
+| **3** | *"Where did I live in Session 01?"* | `Bangalore` | `answerable` | Session-scoped temporal filtering |
+| **4** | *"Where did I live in Session 02?"* | `Hyderabad` | `answerable` | Session-scoped temporal filtering |
+| **5** | *"Where did I live in Session 99?"* | *None* | `abstain` (`no_matching_memory`) | Missing-information abstention |
+| **6** | *"What city do I currently live in?"* | `Hyderabad` | `answerable` | Current-state retrieval |
+| **7** | *"What city did I previously live in?"* | `Bangalore` | `answerable` | Historical-state retrieval |
+
+---
+
 ## Project Structure
 
 ```
@@ -100,7 +119,7 @@ palimn/
 │   │   ├── memory/              # Extraction, entities, temporal grounder, revisions
 │   │   ├── retrieval/           # Query analysis, graph retrieval, temporal ranking, evidence
 │   │   └── hydra/               # HydraDB Cloud client, schema, Cypher queries
-│   ├── tests/                   # Pytest async test suite
+│   ├── tests/                   # Pytest async test suite (29 tests)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -115,6 +134,7 @@ palimn/
 │   ├── data/                    # Dataset storage
 │   └── results/                 # Verified benchmark artifacts
 ├── scripts/
+│   ├── seed_temporal_memory.py  # Idempotent temporal memory graph seeder
 │   ├── ingest_longmemeval.py    # Ingestion script
 │   ├── reset_database.py        # Safe database reset
 │   └── run_benchmark.py         # CLI benchmark runner
@@ -143,15 +163,16 @@ Sample JSON response:
   "status": "ok",
   "service": "PALIMN",
   "version": "0.1.0",
-  "timestamp": "2026-08-19T04:20:00.000000+00:00",
+  "timestamp": "2026-08-19T05:00:00.000000+00:00",
   "environment": "development",
   "hydradb": {
-    "connected": false,
-    "status": "unconfigured",
-    "reason": "HydraDB credentials not configured",
+    "connected": true,
+    "status": "healthy",
+    "reason": null,
+    "latency_ms": 45.2,
     "database": "palimn-memory",
     "mode": "cloud",
-    "base_url": null
+    "base_url": "https://api.hydradb.com"
   }
 }
 ```

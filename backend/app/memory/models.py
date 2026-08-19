@@ -28,6 +28,7 @@ class AbstainReason(str, Enum):
 class Provenance(BaseModel):
     session_id: str
     message_id: str
+    session_date: Optional[str] = None
     timestamp: Optional[str] = None
     snippet: Optional[str] = None
 
@@ -37,13 +38,13 @@ class Fact(BaseModel):
     subject: str = Field(..., description="Entity subject")
     predicate: str = Field(..., description="Relationship or property")
     object: str = Field(..., description="Entity or value object")
-    session_id: str = Field(..., description="Originating session")
+    session_id: str = Field(..., description="Originating session ID")
     message_id: str = Field(..., description="Originating message ID")
-    created_at: str = Field(..., description="Extraction timestamp")
-    valid_from: Optional[str] = Field(None, description="Temporal validity start")
-    valid_until: Optional[str] = Field(None, description="Temporal validity end / invalidation timestamp")
+    created_at: str = Field(..., description="Extraction timestamp (ISO 8601)")
+    valid_from: Optional[str] = Field(None, description="Temporal validity start date/time")
+    valid_until: Optional[str] = Field(None, description="Temporal validity end / invalidation date/time")
     status: MemoryStatus = Field(default=MemoryStatus.ACTIVE, description="Current lifecycle status")
-    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction confidence score")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score")
     superseded_by: Optional[str] = Field(None, description="Memory ID of newer fact replacing this")
     contradicted_by: Optional[str] = Field(None, description="Memory ID of contradicting fact")
     provenance: Optional[Provenance] = None
@@ -59,15 +60,35 @@ class Entity(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class SessionNode(BaseModel):
+    id: str
+    user_id: str
+    session_index: int
+    date: str
+    created_at: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MessageNode(BaseModel):
+    id: str
+    session_id: str
+    role: str = "user"
+    content: str
+    timestamp: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class EvidenceItem(BaseModel):
     memory_id: str
+    fact: Optional[str] = None
     subject: str
     predicate: str
     object: str
     session_id: str
     message_id: str
+    session_date: Optional[str] = None
     status: MemoryStatus
-    confidence: float
+    confidence: float = 1.0
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     relevance_score: float = 1.0
@@ -76,15 +97,15 @@ class EvidenceItem(BaseModel):
 
 class ChatQueryRequest(BaseModel):
     question: str = Field(..., description="User question to answer using temporal memory")
-    user_id: Optional[str] = Field("default_user", description="User identifier")
+    user_id: Optional[str] = Field("user_demo", description="User identifier")
     session_id: Optional[str] = Field(None, description="Current interactive session ID")
-    time_context: Optional[str] = Field(None, description="Temporal reference timestamp (e.g. current date in conversation)")
+    time_context: Optional[str] = Field(None, description="Temporal reference timestamp")
 
 
 class ChatQueryResponse(BaseModel):
     question: str
     decision: DecisionType = Field(..., description="answerable or abstain")
-    reason: Optional[str] = Field(None, description="Reason if abstaining (e.g. insufficient_evidence)")
+    reason: Optional[str] = Field(None, description="Reason if abstaining (e.g. no_matching_memory)")
     answer: Optional[str] = Field(None, description="Generated answer if answerable")
     confidence: float = Field(..., ge=0.0, le=1.0)
     evidence: List[EvidenceItem] = Field(default_factory=list)
@@ -92,19 +113,40 @@ class ChatQueryResponse(BaseModel):
     latency_ms: float = Field(..., description="Total processing latency in ms")
 
 
+# Phase 2 Structured Ingestion Models
+class FactInput(BaseModel):
+    subject: str
+    predicate: str
+    object: str
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    confidence: float = 1.0
+
+
+class StructuredIngestRequest(BaseModel):
+    user_id: str = "user_demo"
+    session_id: str
+    session_date: str
+    message_id: str
+    content: str
+    facts: List[FactInput] = Field(default_factory=list)
+
+
 class IngestMessage(BaseModel):
     message_id: str
-    role: str = "user"  # "user" | "assistant" | "system"
+    role: str = "user"
     content: str
     timestamp: Optional[str] = None
 
 
 class IngestSessionRequest(BaseModel):
-    user_id: str = "default_user"
+    user_id: str = "user_demo"
     session_id: str
     session_index: Optional[int] = None
+    session_date: Optional[str] = None
     timestamp: Optional[str] = None
-    messages: List[IngestMessage]
+    messages: List[IngestMessage] = Field(default_factory=list)
+    facts: Optional[List[FactInput]] = None
 
 
 class IngestSessionResponse(BaseModel):

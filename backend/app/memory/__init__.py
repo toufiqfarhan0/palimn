@@ -7,6 +7,7 @@ from backend.app.memory.models import (
     Entity,
     EvidenceItem,
     Fact,
+    FactInput,
     GraphEdge,
     GraphNode,
     GraphResponse,
@@ -14,7 +15,10 @@ from backend.app.memory.models import (
     IngestSessionRequest,
     IngestSessionResponse,
     MemoryStatus,
+    MessageNode,
     Provenance,
+    SessionNode,
+    StructuredIngestRequest,
 )
 
 __all__ = [
@@ -23,10 +27,14 @@ __all__ = [
     "AbstainReason",
     "Provenance",
     "Fact",
+    "FactInput",
     "Entity",
+    "SessionNode",
+    "MessageNode",
     "EvidenceItem",
     "ChatQueryRequest",
     "ChatQueryResponse",
+    "StructuredIngestRequest",
     "IngestMessage",
     "IngestSessionRequest",
     "IngestSessionResponse",

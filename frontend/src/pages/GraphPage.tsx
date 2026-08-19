@@ -11,7 +11,7 @@ import {
   MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { fetchGraphData, GraphResponse } from '../lib/api';
+import { fetchGraphData, GraphResponse, GraphNode, GraphEdge } from '../lib/api';
 import { GitFork, RefreshCw } from 'lucide-react';
 
 export const GraphPage: React.FC = () => {
@@ -20,84 +20,92 @@ export const GraphPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
+  const formatGraph = (data: GraphResponse) => {
+    const layoutPositions: Record<string, { x: number; y: number }> = {
+      user_demo: { x: 300, y: 30 },
+      session_01: { x: 120, y: 140 },
+      session_02: { x: 480, y: 140 },
+      msg_01: { x: 120, y: 250 },
+      msg_02: { x: 480, y: 250 },
+      fact_001: { x: 120, y: 370 },
+      fact_002: { x: 480, y: 370 },
+      entity_bangalore: { x: 120, y: 490 },
+      entity_hyderabad: { x: 480, y: 490 },
+    };
+
+    const rfNodes: Node[] = data.nodes.map((n: GraphNode, idx: number) => {
+      const pos = layoutPositions[n.id] || { x: 100 + (idx % 3) * 220, y: 80 + Math.floor(idx / 3) * 120 };
+      const props = n.properties || {};
+      const status = props.status;
+
+      let style = {
+        background: '#0F172A',
+        color: '#94A3B8',
+        border: '1px solid #334155',
+        borderRadius: '8px',
+        padding: '10px',
+        fontSize: '11px',
+        minWidth: '150px',
+      };
+
+      if (n.label === 'User') {
+        style = { ...style, background: '#1E1B4B', color: '#E0E7FF', border: '1px solid #6366F1' };
+      } else if (n.label === 'Session') {
+        style = { ...style, background: '#1E293B', color: '#CBD5E1', border: '1px solid #475569' };
+      } else if (n.label === 'Fact') {
+        if (status === 'active') {
+          style = { ...style, background: '#064E3B', color: '#6EE7B7', border: '1px solid #10B981' };
+        } else {
+          style = { ...style, background: '#1C1917', color: '#FCD34D', border: '1px solid #D97706' };
+        }
+      } else if (n.label === 'Entity') {
+        style = { ...style, background: '#1E1E2E', color: '#C4B5FD', border: '1px solid #8B5CF6' };
+      }
+
+      return {
+        id: n.id,
+        position: pos,
+        data: {
+          label: n.name || `${n.label}: ${n.id}`,
+          details: props,
+          nodeLabel: n.label,
+        },
+        style,
+      };
+    });
+
+    const rfEdges: Edge[] = data.edges.map((e: GraphEdge) => {
+      const isSupersedes = e.type === 'SUPERSEDES';
+      const isPrecedes = e.type === 'PRECEDES';
+
+      return {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.type,
+        animated: isSupersedes || isPrecedes,
+        style: {
+          stroke: isSupersedes ? '#F59E0B' : isPrecedes ? '#6366F1' : '#475569',
+          strokeWidth: isSupersedes ? 2 : 1,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isSupersedes ? '#F59E0B' : isPrecedes ? '#6366F1' : '#475569',
+        },
+      };
+    });
+
+    return { rfNodes, rfEdges };
+  };
+
   const loadGraph = useCallback(async () => {
     setLoading(true);
     try {
       const data: GraphResponse = await fetchGraphData(100);
-      
-      // If graph is empty (e.g. freshly initialized), populate demonstration visual nodes
-      if (data.nodes.length === 0) {
-        const demoNodes: Node[] = [
-          {
-            id: 'user_1',
-            position: { x: 250, y: 50 },
-            data: { label: 'User: toufiq' },
-            style: { background: '#1E1B4B', color: '#E0E7FF', border: '1px solid #6366F1', borderRadius: '8px', padding: '10px' },
-          },
-          {
-            id: 'fact_s4',
-            position: { x: 100, y: 180 },
-            data: {
-              label: 'Fact: lives_in Bangalore\n(Status: historical)',
-              details: {
-                memory_id: 'mem_001',
-                subject: 'user',
-                predicate: 'lives_in',
-                object: 'Bangalore',
-                session: 'Session 4',
-                status: 'historical',
-              }
-            },
-            style: { background: '#1C1917', color: '#FCD34D', border: '1px solid #D97706', borderRadius: '8px', padding: '10px', fontSize: '11px' },
-          },
-          {
-            id: 'fact_s19',
-            position: { x: 400, y: 180 },
-            data: {
-              label: 'Fact: lives_in Hyderabad\n(Status: active)',
-              details: {
-                memory_id: 'mem_002',
-                subject: 'user',
-                predicate: 'lives_in',
-                object: 'Hyderabad',
-                session: 'Session 19',
-                status: 'active',
-              }
-            },
-            style: { background: '#064E3B', color: '#6EE7B7', border: '1px solid #10B981', borderRadius: '8px', padding: '10px', fontSize: '11px' },
-          },
-          {
-            id: 'entity_bangalore',
-            position: { x: 80, y: 320 },
-            data: { label: 'Entity: Bangalore' },
-            style: { background: '#0F172A', color: '#94A3B8', border: '1px solid #334155', borderRadius: '8px', padding: '8px', fontSize: '11px' },
-          },
-          {
-            id: 'entity_hyderabad',
-            position: { x: 420, y: 320 },
-            data: { label: 'Entity: Hyderabad' },
-            style: { background: '#0F172A', color: '#94A3B8', border: '1px solid #334155', borderRadius: '8px', padding: '8px', fontSize: '11px' },
-          },
-        ];
-
-        const demoEdges: Edge[] = [
-          { id: 'e1', source: 'user_1', target: 'fact_s4', label: 'HAS_MEMORY', style: { stroke: '#6366F1' } },
-          { id: 'e2', source: 'user_1', target: 'fact_s19', label: 'HAS_MEMORY', style: { stroke: '#6366F1' } },
-          {
-            id: 'e3',
-            source: 'fact_s19',
-            target: 'fact_s4',
-            label: 'SUPERSEDES',
-            animated: true,
-            style: { stroke: '#F59E0B', strokeWidth: 2 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#F59E0B' },
-          },
-          { id: 'e4', source: 'fact_s4', target: 'entity_bangalore', label: 'ABOUT', style: { stroke: '#475569' } },
-          { id: 'e5', source: 'fact_s19', target: 'entity_hyderabad', label: 'ABOUT', style: { stroke: '#475569' } },
-        ];
-
-        setNodes(demoNodes);
-        setEdges(demoEdges);
+      if (data.nodes.length > 0) {
+        const { rfNodes, rfEdges } = formatGraph(data);
+        setNodes(rfNodes);
+        setEdges(rfEdges);
       }
     } catch (err) {
       console.error('Failed to load graph snapshot', err);
@@ -183,26 +191,18 @@ export const GraphPage: React.FC = () => {
 
               {selectedNode.data?.details ? (
                 <div className="space-y-1.5 bg-graphite-900/80 p-2.5 rounded border border-slate-800 font-mono text-[11px]">
-                  <div>
-                    <span className="text-slate-500">Subject:</span>{' '}
-                    <span className="text-slate-200">{(selectedNode.data.details as any).subject}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Predicate:</span>{' '}
-                    <span className="text-palimn-cyan">{(selectedNode.data.details as any).predicate}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Object:</span>{' '}
-                    <span className="text-slate-100 font-semibold">{(selectedNode.data.details as any).object}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Origin:</span>{' '}
-                    <span className="text-slate-300">{(selectedNode.data.details as any).session}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Status:</span>{' '}
-                    <span className="text-amber-400">{(selectedNode.data.details as any).status}</span>
-                  </div>
+                  {Object.entries(selectedNode.data.details as Record<string, any>).map(([key, val]) => (
+                    <div key={key} className="flex items-start justify-between gap-2">
+                      <span className="text-slate-500">{key}:</span>
+                      <span className={`text-right font-semibold ${
+                        key === 'status' && val === 'active' ? 'text-emerald-400' :
+                        key === 'status' && val === 'superseded' ? 'text-amber-400' :
+                        'text-slate-200'
+                      }`}>
+                        {String(val ?? 'null')}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="text-slate-400 text-xs">

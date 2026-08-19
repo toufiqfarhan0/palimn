@@ -11,16 +11,19 @@ class EvidenceAggregator:
         return [
             EvidenceItem(
                 memory_id=f.memory_id,
+                fact=f"{f.subject} {f.predicate} {f.object}",
                 subject=f.subject,
                 predicate=f.predicate,
                 object=f.object,
                 session_id=f.session_id,
                 message_id=f.message_id,
+                session_date=f.provenance.session_date if f.provenance else f.valid_from,
                 status=f.status,
                 confidence=f.confidence,
                 valid_from=f.valid_from,
                 valid_until=f.valid_until,
-                provenance_text=f.provenance.snippet if f.provenance else None,
+                relevance_score=1.0,
+                provenance_text=f.provenance.snippet if f.provenance else f"{f.subject} {f.predicate} {f.object}",
             )
             for f in facts
         ]

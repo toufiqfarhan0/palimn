@@ -39,7 +39,7 @@ class LongMemEvalEvaluator:
 
         # 2. Candidate Retrieval & Scoring
         t_ret_start = time.perf_counter()
-        candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
+        candidates = await self.candidate_retriever.retrieve_candidate_messages_async(intent, top_k=20)
         t_ret_ms = round((time.perf_counter() - t_ret_start) * 1000, 2)
 
         # 3. Fact Extraction & Resolution

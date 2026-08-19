@@ -76,3 +76,5 @@ data/
 datasets/
 temp_datasets/
 *.jsonl
+benchmark_*.json
+.smoke_test_ids.txt

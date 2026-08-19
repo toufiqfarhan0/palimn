@@ -128,20 +128,59 @@ class HydraCloudStore:
             if s_id:
                 source_ids.append(s_id)
 
-        memories_json = json.dumps(formatted_items)
-        logger.debug("Ingesting %d memory items to HydraDB Cloud (%s)...", len(formatted_items), self.database)
+        # Dynamically chunk items by character budget to stay safely within the 1000-token per-request limit
+        chunks: List[List[Dict[str, Any]]] = []
+        current_chunk: List[Dict[str, Any]] = []
+        current_chars = 0
+        
+        for item in formatted_items:
+            item_chars = len(item["text"])
+            if current_chunk and (current_chars + item_chars > 2000 or len(current_chunk) >= 5):
+                chunks.append(current_chunk)
+                current_chunk = [item]
+                current_chars = item_chars
+            else:
+                current_chunk.append(item)
+                current_chars += item_chars
+        if current_chunk:
+            chunks.append(current_chunk)
 
-        # Call official HydraDB context.ingest endpoint
-        res = await self.client.context.ingest(
-            database=self.database,
-            collection=collection,
-            memories=memories_json,
-            type="memory",
-        )
+        # Ingest chunks concurrently with a semaphore
+        sem = asyncio.Semaphore(4)
 
-        if not res.success:
-            err_msg = res.data.message if res.data else "Failed to ingest memories"
-            raise RuntimeError(f"HydraDB Cloud ingestion failed: {err_msg}")
+        async def ingest_chunk(chunk_items: List[Dict[str, Any]], retry_count: int = 8) -> None:
+            async with sem:
+                memories_json = json.dumps(chunk_items)
+                for attempt in range(retry_count):
+                    try:
+                        res = await self.client.context.ingest(
+                            database=self.database,
+                            collection=collection,
+                            memories=memories_json,
+                            type="memory",
+                        )
+                        if res.success:
+                            return
+                        err_msg = res.data.message if res.data else "Unknown error"
+                        if attempt == retry_count - 1:
+                            raise RuntimeError(f"HydraDB Cloud ingestion failed: {err_msg}")
+                    except Exception as e:
+                        status_code = getattr(e, "status_code", None)
+                        if status_code == 429:
+                            retry_after = 3.5
+                            if hasattr(e, "headers") and isinstance(e.headers, dict):
+                                try:
+                                    retry_after = float(e.headers.get("retry-after", 3.5)) + 0.5
+                                except Exception:
+                                    retry_after = 3.5
+                            logger.info("HydraDB rate limit encountered, waiting %.1fs before retry...", retry_after)
+                            await asyncio.sleep(retry_after)
+                            continue
+                        if attempt == retry_count - 1:
+                            raise e
+                        await asyncio.sleep(1.0 * (attempt + 1))
+
+        await asyncio.gather(*(ingest_chunk(c) for c in chunks))
 
         # Wait for asynchronous indexing to complete
         indexed_count = 0
@@ -162,22 +201,24 @@ class HydraCloudStore:
         timeout_s: float = 30.0,
         poll_interval_s: float = 1.0,
     ) -> int:
-        """Poll HydraDB context.status until all submitted source IDs reach terminal status."""
+        """Poll HydraDB context.status until submitted source IDs reach terminal status."""
         start_time = time.perf_counter()
         pending = set(source_ids)
         completed = set()
 
         while pending and (time.perf_counter() - start_time) < timeout_s:
+            batch_check = list(pending)[:20]
             try:
                 st = await self.client.context.status(
                     database=self.database,
-                    ids=list(pending),
+                    ids=batch_check,
                     collection=collection,
                 )
-                if st.success and st.data and hasattr(st.data, "statuses") and st.data.statuses:
-                    for status_item in st.data.statuses:
-                        status_str = getattr(status_item, "indexing_status", "")
-                        item_id = getattr(status_item, "id", "")
+                if st.success and st.data:
+                    stat_list = getattr(st.data, "statuses", None) or getattr(st.data, "sources", None) or []
+                    for status_item in stat_list:
+                        status_str = getattr(status_item, "indexing_status", "") or getattr(status_item, "status", "")
+                        item_id = getattr(status_item, "id", "") or getattr(status_item, "source_id", "")
                         if status_str in ("completed", "errored", "failed"):
                             pending.discard(item_id)
                             completed.add(item_id)

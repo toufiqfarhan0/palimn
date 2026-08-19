@@ -45,6 +45,7 @@ class CandidateRetriever:
             )
             if cloud_candidates:
                 return self._score_candidates(cloud_candidates, intent, top_k)
+            return []
 
         # 2. Local In-Memory Store Path (Unit Tests)
         return self.retrieve_candidate_messages(intent, top_k)

@@ -462,7 +462,6 @@ class HydraClient:
                 collection=None,
                 wait_indexing=True,
             )
-            self._ingest_longmemeval_local(record)
             return {
                 "question_id": record.question_id,
                 "user_id": record.user_id,

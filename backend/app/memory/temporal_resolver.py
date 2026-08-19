@@ -45,6 +45,20 @@ class TemporalResolver:
                 confidence=0.0,
                 reasoning="No candidate facts extracted from candidate messages.",
             )
+        # Enforce session scoping when requested by query intent
+        if getattr(intent, "session_id", None):
+            target_sess = str(intent.session_id).lower()
+            candidates = [
+                c for c in candidates
+                if c.source_session_id and target_sess in str(c.source_session_id).lower()
+            ]
+            if not candidates:
+                return ResolutionResult(
+                    decision="abstain",
+                    reason=AbstainReason.NO_MATCHING_MEMORY.value,
+                    confidence=0.0,
+                    reasoning=f"No memory record found for session '{intent.session_id}'.",
+                )
 
         q_lower = intent.raw_query.lower()
         is_historical_q = any(w in q_lower for w in ["before", "previously", "former", "past", "prior", "was my", "were my", "did i live before", "last name before", "previous occupation", "previous role", "did i work before"])

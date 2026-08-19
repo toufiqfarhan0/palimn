@@ -13,7 +13,6 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from hydra_db import AsyncHydraDB
-from hydra_db.core.api_error import ApiError
 from backend.app.core.config import settings
 
 logger = logging.getLogger("palimn.hydra.cloud")
@@ -229,7 +228,7 @@ class HydraCloudStore:
             candidates.append({
                 "message_id": chunk.id or getattr(chunk, "source_title", None) or "",
                 "content": chunk.chunk_content or "",
-                "score": float(chunk.relevancy_score or 0.0),
+                "score": chunk.relevancy_score or 0.0,
                 "session_id": c_meta.get("session_id", ""),
                 "session_date": c_meta.get("session_date"),
                 "timestamp": c_meta.get("timestamp"),
@@ -255,7 +254,11 @@ class HydraCloudStore:
             page_size=page_size,
         )
         if res.success and res.data:
-            return res.data.user_memories or res.data.sources or []
+            data_obj = res.data
+            sources = getattr(data_obj, "user_memories", None) or getattr(data_obj, "sources", None)
+            if not sources and hasattr(data_obj, "inner") and data_obj.inner:
+                sources = getattr(data_obj.inner, "sources", None)
+            return sources or []
         return []
 
     async def delete_sources(

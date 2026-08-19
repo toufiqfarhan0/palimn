@@ -81,17 +81,28 @@ export interface GraphResponse {
 
 export interface BenchmarkMetrics {
   overall_accuracy: number;
+  exact_match_accuracy?: number;
   information_extraction_acc: number;
   multi_session_acc: number;
+  single_session_acc?: number;
   knowledge_update_acc: number;
   temporal_reasoning_acc: number;
   abstention_precision: number;
   abstention_recall: number;
+  false_answer_rate?: number;
+  false_abstention_rate?: number;
+  recall_at_1?: number;
+  recall_at_5?: number;
+  recall_at_10?: number;
+  recall_at_20?: number;
   avg_retrieval_latency_ms: number;
   avg_e2e_latency_ms: number;
+  p50_latency_ms?: number;
+  p95_latency_ms?: number;
   total_evaluated: number;
   total_correct: number;
   total_abstained: number;
+  total_answerable?: number;
 }
 
 export interface BenchmarkRunSummary {
@@ -102,6 +113,9 @@ export interface BenchmarkRunSummary {
   start_time: string;
   end_time?: string | null;
   metrics?: BenchmarkMetrics | null;
+  by_question_type?: Record<string, any>;
+  failure_categories?: Record<string, number>;
+  database_growth?: Record<string, number>;
 }
 
 export interface BenchmarkResultsResponse {

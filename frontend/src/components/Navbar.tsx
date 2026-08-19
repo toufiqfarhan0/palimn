@@ -1,79 +1,100 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { MessageSquare, GitFork, BarChart3, Clock } from 'lucide-react';
+import { NavLink, Link } from 'react-router-dom';
+import { GitFork, BarChart2, Cpu, Terminal, ArrowRight } from 'lucide-react';
 import { HealthBadge } from './HealthBadge';
 
 export const Navbar: React.FC = () => {
   return (
-    <header className="sticky top-0 z-50 glass-panel border-b border-slate-800/80 px-6 py-3.5 flex items-center justify-between">
+    <header className="sticky top-0 z-50 bg-[#07090E]/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3 flex items-center justify-between transition-all">
       {/* Brand Identity */}
-      <div className="flex items-center gap-6">
-        <NavLink to="/chat" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-palimn-violet to-palimn-indigo flex items-center justify-center shadow-glow-violet group-hover:scale-105 transition-transform">
-            <Clock className="w-4 h-4 text-white" />
+      <div className="flex items-center gap-8">
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="w-8 h-8 rounded border border-slate-700 bg-graphite-900 flex items-center justify-center text-slate-200 group-hover:border-cyan-500/50 group-hover:text-cyan-400 transition-colors">
+            <span className="font-mono text-xs font-bold tracking-tight">Pλ</span>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-bold tracking-wider text-base text-white font-mono">PALIMN</span>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-palimn-violet/20 text-palimn-violet-light border border-palimn-violet/30">
+              <span className="font-bold tracking-wider text-sm text-slate-100 font-mono">PALIMN</span>
+              <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 bg-slate-800/80 text-slate-300 rounded border border-slate-700/60">
                 Track 3
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 font-sans tracking-tight">
-              Temporal Memory for AI Agents
+            <p className="text-[11px] text-slate-400 font-sans tracking-tight leading-none mt-0.5">
+              Temporal memory for AI agents
             </p>
           </div>
-        </NavLink>
+        </Link>
 
         {/* Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1.5 pl-4 border-l border-slate-800">
+        <nav className="hidden md:flex items-center gap-1 pl-4 border-l border-slate-800" aria-label="Main Navigation">
           <NavLink
             to="/chat"
             className={({ isActive }) =>
-              `flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
                 isActive
-                  ? 'bg-palimn-violet/15 text-palimn-violet-light border border-palimn-violet/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-graphite-800/50 border border-transparent'
+                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
               }`
             }
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span>Chat & Reasoning</span>
+            <Terminal className="w-3.5 h-3.5" />
+            <span>Memory</span>
           </NavLink>
 
           <NavLink
             to="/graph"
             className={({ isActive }) =>
-              `flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
                 isActive
-                  ? 'bg-palimn-violet/15 text-palimn-violet-light border border-palimn-violet/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-graphite-800/50 border border-transparent'
+                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
               }`
             }
           >
             <GitFork className="w-3.5 h-3.5" />
-            <span>Memory Graph</span>
+            <span>Graph</span>
           </NavLink>
 
           <NavLink
             to="/benchmark"
             className={({ isActive }) =>
-              `flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
                 isActive
-                  ? 'bg-palimn-violet/15 text-palimn-violet-light border border-palimn-violet/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-graphite-800/50 border border-transparent'
+                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
               }`
             }
           >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>LongMemEval Benchmark</span>
+            <BarChart2 className="w-3.5 h-3.5" />
+            <span>Benchmark</span>
+          </NavLink>
+
+          <NavLink
+            to="/architecture"
+            className={({ isActive }) =>
+              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
+                isActive
+                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
+              }`
+            }
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Architecture</span>
           </NavLink>
         </nav>
       </div>
 
-      {/* Live System Health */}
-      <div className="flex items-center gap-3">
+      {/* Primary CTA & Live Status */}
+      <div className="flex items-center gap-4">
         <HealthBadge />
+        <Link
+          to="/chat"
+          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-white text-graphite-950 text-xs font-mono font-medium transition-colors border border-transparent"
+        >
+          <span>Open Console</span>
+          <ArrowRight className="w-3 h-3" />
+        </Link>
       </div>
     </header>
   );

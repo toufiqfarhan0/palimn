@@ -67,7 +67,7 @@ class QueryAnalyzer:
         # Phase 2 Preserved: Historical location queries ("before Hyderabad", "previously live in")
         # -------------------------------------------------------------
         if any(w in cleaned for w in ["before", "previously", "earlier", "prior", "past"]) and (
-            "live" in cleaned or "city" in cleaned or "reside" in cleaned or "before" in cleaned
+            "live" in cleaned or "city" in cleaned or "reside" in cleaned or "moved" in cleaned
         ):
             # Extract reference object if specified (e.g., "before Hyderabad")
             ref_match = re.search(r"before\s+([a-zA-Z]+)", query, re.IGNORECASE)
@@ -122,7 +122,7 @@ class QueryAnalyzer:
             )
 
         # -------------------------------------------------------------
-        # Phase 5: Open-Domain Temporal Query Analysis
+        # Phase 5 & 8: Open-Domain Temporal Query Analysis
         # -------------------------------------------------------------
         if concepts:
             return QueryIntent(

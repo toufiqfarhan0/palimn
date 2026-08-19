@@ -22,6 +22,10 @@ class AbstainReason(str, Enum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     NO_MATCHING_MEMORY = "no_matching_memory"
     CONFLICTING_EVIDENCE = "conflicting_evidence"
+    CONFLICTING_MEMORY = "conflicting_memory"
+    AMBIGUOUS_ENTITY = "ambiguous_entity"
+    UNRESOLVED_TEMPORAL_STATE = "unresolved_temporal_state"
+    INCOMPLETE_COMPOSITION = "incomplete_composition"
     TEMPORAL_AMBIGUITY = "temporal_ambiguity"
 
 
@@ -67,6 +71,32 @@ class FactCandidate(BaseModel):
     extraction_pattern: Optional[str] = Field(None, description="Pattern or rule identifier")
     evidence_span: Optional[str] = Field(None, description="Exact clause / sentence evidence span")
 
+
+class MemoryUnitType(str, Enum):
+    ATTRIBUTE = "attribute"
+    EVENT = "event"
+    RELATION = "relation"
+    TRANSACTION = "transaction"
+
+
+class MemoryUnit(BaseModel):
+    """Generalized typed memory representation decoupled from rigid single-predicate taxonomies."""
+    unit_id: str = Field(..., description="Unique memory unit identifier")
+    unit_type: MemoryUnitType = Field(default=MemoryUnitType.ATTRIBUTE, description="Kind of memory unit")
+    subject: str = Field(default="user", description="Resolved subject entity (e.g. user, sister, father, Sarah)")
+    predicate_or_event: str = Field(..., description="Primary predicate, verb, or event type")
+    object: Optional[str] = Field(None, description="Primary object entity or target")
+    value: Optional[str] = Field(None, description="Extracted numerical or literal value with units")
+    attribute: Optional[str] = Field(None, description="Normalized attribute name (e.g. internet_speed, shirt_count)")
+    attributes: Dict[str, Any] = Field(default_factory=dict, description="Structured attributes map")
+    qualifiers: Dict[str, Any] = Field(default_factory=dict, description="Compositional modifiers, context, location, duration, amount")
+    entities: List[str] = Field(default_factory=list, description="Associated named entities")
+    temporal_context: Optional[str] = Field(None, description="Temporal point or range")
+    source_message_id: str = Field(..., description="Originating message ID")
+    source_session_id: str = Field(..., description="Originating session ID")
+    source_timestamp: Optional[str] = Field(None, description="Originating message timestamp")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Confidence score")
+    evidence_span: Optional[str] = Field(None, description="Verbatim clause evidence span")
 
 
 class Entity(BaseModel):

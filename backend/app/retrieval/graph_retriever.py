@@ -1,9 +1,10 @@
-"""Graph-native deterministic traversal and candidate retrieval via HydraDB."""
+"""Graph-native deterministic traversal, memory composition, and retrieval via HydraDB."""
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 import logging
 from backend.app.memory.models import Fact, FactCandidate, MemoryStatus
 from backend.app.memory.fact_extractor import DeterministicFactExtractor
-from backend.app.memory.structured_extractor import StructuredFactExtractor
+from backend.app.memory.generalized_extractor import GeneralizedMemoryExtractor
+from backend.app.memory.composer import MemoryComposer
 from backend.app.memory.temporal_resolver import TemporalResolver
 from backend.app.retrieval.candidate_retriever import CandidateRetriever
 from backend.app.retrieval.query_analyzer import QueryIntent
@@ -15,12 +16,13 @@ logger = logging.getLogger("palimn.graph_retriever")
 
 
 class GraphRetriever:
-    """Traverses HydraDB temporal memory graph based on structured query intents."""
+    """Traverses HydraDB temporal memory graph, extracts MemoryUnits, and resolves composed facts."""
 
     def __init__(self, hydra_client: Any):
         self.hydra = hydra_client
         self.extractor = DeterministicFactExtractor()
-        self.structured_extractor = StructuredFactExtractor()
+        self.generalized_extractor = GeneralizedMemoryExtractor()
+        self.composer = MemoryComposer()
         self.temporal_resolver = TemporalResolver()
         self.candidate_retriever = CandidateRetriever(self.hydra)
 
@@ -66,24 +68,52 @@ class GraphRetriever:
                 return [], f"No memory record found for session '{intent.session_id}'."
             return [], "Missing target session ID."
 
-        # 2. Structured Clause-Level Message Extraction + Temporal Resolution
+        # 2. Retrieve Candidate Messages
         candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
         if not candidates:
             return [], f"No relevant message candidates found for concepts: {intent.concepts}."
 
+        # 3. Generalized Memory Unit Extraction
+        all_units = []
         all_fact_candidates: List[FactCandidate] = []
+
         for cand in candidates:
-            extracted = self.structured_extractor.extract_from_message(
+            units = self.generalized_extractor.extract_memory_units(
                 content=cand.content,
                 session_id=cand.session_id,
                 message_id=cand.message_id,
                 timestamp=cand.timestamp,
                 role=cand.role,
-                subject=intent.subject,
+                default_subject=intent.subject,
             )
-            all_fact_candidates.extend(extracted)
+            all_units.extend(units)
+            for u in units:
+                all_fact_candidates.append(
+                    FactCandidate(
+                        subject=u.subject,
+                        predicate=u.predicate_or_event,
+                        object=u.value or u.object or "",
+                        qualifiers=u.qualifiers,
+                        entities=u.entities,
+                        source_message_id=u.source_message_id,
+                        source_session_id=u.source_session_id,
+                        source_timestamp=u.source_timestamp,
+                        confidence=u.confidence,
+                        extraction_pattern=u.unit_type.value,
+                        evidence_span=u.evidence_span,
+                    )
+                )
 
-        # If no structured facts extracted, fallback to legacy regex extractor
+        # 4. Cross-Message & Cross-Session Memory Composition
+        if all_units:
+            composed_cands = self.composer.compose_units(
+                units=all_units,
+                query_text=intent.raw_query,
+                query_subject=intent.subject,
+            )
+            all_fact_candidates.extend(composed_cands)
+
+        # 5. Legacy Regex Fallback if zero candidates
         if not all_fact_candidates:
             for cand in candidates:
                 legacy_facts = self.extractor.extract_from_message(
@@ -112,6 +142,7 @@ class GraphRetriever:
         if not all_fact_candidates:
             return [], f"No structured fact candidates extracted from {len(candidates)} candidate messages."
 
+        # 6. Deterministic Temporal Resolution
         resolution = self.temporal_resolver.resolve_facts_for_query(all_fact_candidates, intent)
         if resolution.decision == "answerable" and resolution.facts:
             primary_fact = resolution.facts[0]

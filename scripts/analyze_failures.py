@@ -33,7 +33,7 @@ def analyze_report(report_path: str):
     print("--------------------------------------------------")
     for cat, count in failure_cats.items():
         pct = (count / len(questions)) * 100 if questions else 0
-        print(f"  - {cat:22s}: {count:3d} ({pct:5.2f}%)")
+        print(f"  - {cat:28s}: {count:3d} ({pct:5.2f}%)")
 
     # Filter Successes and Failures
     successes = [q for q in questions if q.get("exact_match")]

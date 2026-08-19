@@ -2,7 +2,7 @@
 
 Isolates all HTTP/Bolt communication with HydraDB Cloud.
 Provides resilient connection handling, structured querying, health verification,
-and deterministic in-memory graph synchronization.
+and deterministic in-memory graph synchronization with high-performance secondary indexing.
 """
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
@@ -29,15 +29,21 @@ logger = logging.getLogger("palimn.hydra")
 
 
 class InMemoryGraphStore:
-    """Deterministic in-memory graph repository providing Cypher-consistent graph semantics."""
+    """Deterministic in-memory graph repository providing Cypher-consistent graph semantics and fast indexing."""
 
     def __init__(self):
         self.nodes: Dict[str, Dict[str, Any]] = {}
         self.edges: List[Dict[str, Any]] = []
+        self.messages_by_user: Dict[str, List[Dict[str, Any]]] = {}
+        self.messages_by_question: Dict[str, List[Dict[str, Any]]] = {}
+        self.all_messages: List[Dict[str, Any]] = []
 
     def clear(self):
         self.nodes.clear()
         self.edges.clear()
+        self.messages_by_user.clear()
+        self.messages_by_question.clear()
+        self.all_messages.clear()
 
     def merge_node(self, node_id: str, label: str, properties: Dict[str, Any]) -> Dict[str, Any]:
         if node_id in self.nodes:
@@ -49,6 +55,14 @@ class InMemoryGraphStore:
                 "label": label,
                 "properties": properties,
             }
+            if label == "Message":
+                self.all_messages.append(properties)
+                u_id = properties.get("user_id")
+                q_id = properties.get("question_id")
+                if u_id:
+                    self.messages_by_user.setdefault(u_id, []).append(properties)
+                if q_id:
+                    self.messages_by_question.setdefault(q_id, []).append(properties)
         return self.nodes[node_id]
 
     def merge_edge(
@@ -92,6 +106,7 @@ class InMemoryGraphStore:
         self.merge_node("msg_01", "Message", {
             "id": "msg_01",
             "session_id": "session_01",
+            "user_id": "user_demo",
             "role": "user",
             "content": "I live in Bangalore.",
             "timestamp": "2025-01-10T10:00:00Z",
@@ -108,6 +123,7 @@ class InMemoryGraphStore:
         self.merge_node("msg_02", "Message", {
             "id": "msg_02",
             "session_id": "session_02",
+            "user_id": "user_demo",
             "role": "user",
             "content": "I moved to Hyderabad.",
             "timestamp": "2025-03-15T14:30:00Z",
@@ -345,6 +361,7 @@ class HydraClient:
         self._in_memory_store.merge_node(req.message_id, "Message", {
             "id": req.message_id,
             "session_id": req.session_id,
+            "user_id": req.user_id,
             "role": "user",
             "content": req.content,
             "timestamp": f"{req.session_date}T12:00:00Z",
@@ -475,16 +492,6 @@ class HydraClient:
                 })
                 self._in_memory_store.merge_edge(session.session_id, msg.message_id, "CONTAINS")
                 total_messages += 1
-
-        # Also execute Cypher batch on HydraDB Cloud if configured
-        if self.is_configured:
-            try:
-                await self.execute_query(
-                    "MERGE (u:User {id: $user_id}) ON CREATE SET u.name = $name",
-                    {"user_id": record.user_id, "name": f"User {record.question_id}"},
-                )
-            except Exception as exc:
-                logger.warning("Cloud LongMemEval record sync notice: %s", exc)
 
         return {
             "question_id": record.question_id,

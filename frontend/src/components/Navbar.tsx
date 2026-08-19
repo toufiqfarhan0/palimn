@@ -1,101 +1,126 @@
-import React from 'react';
-import { NavLink, Link } from 'react-router-dom';
-import { GitFork, BarChart2, Cpu, Terminal, ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { NavLink, Link, useLocation } from 'react-router-dom';
+import { Sparkles, Network, Activity, Layers, ArrowUpRight, Menu, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PalimnLogo } from './PalimnLogo';
 import { HealthBadge } from './HealthBadge';
 
 export const Navbar: React.FC = () => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+
+  const navItems = [
+    { to: '/chat', label: 'Memory', icon: Sparkles },
+    { to: '/graph', label: 'Graph', icon: Network },
+    { to: '/benchmark', label: 'Benchmark', icon: Activity },
+    { to: '/architecture', label: 'Architecture', icon: Layers },
+  ];
+
   return (
-    <header className="sticky top-0 z-50 bg-[#07090E]/90 backdrop-blur-md border-b border-slate-800/80 px-6 py-3 flex items-center justify-between transition-all">
-      {/* Brand Identity */}
-      <div className="flex items-center gap-8">
-        <Link to="/" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded border border-slate-700 bg-graphite-900 flex items-center justify-center text-slate-200 group-hover:border-cyan-500/50 group-hover:text-cyan-400 transition-colors">
-            <span className="font-mono text-xs font-bold tracking-tight">Pλ</span>
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold tracking-wider text-sm text-slate-100 font-mono">PALIMN</span>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 bg-slate-800/80 text-slate-300 rounded border border-slate-700/60">
-                Track 3
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 font-sans tracking-tight leading-none mt-0.5">
-              Temporal memory for AI agents
-            </p>
-          </div>
+    <header className="sticky top-0 z-50 w-full px-4 sm:px-8 py-3.5 bg-[#07080D]/80 backdrop-blur-xl border-b border-white/[0.06] transition-all duration-300">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Brand Logo */}
+        <Link to="/" className="flex items-center gap-3">
+          <PalimnLogo size="md" />
         </Link>
 
-        {/* Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 pl-4 border-l border-slate-800" aria-label="Main Navigation">
-          <NavLink
-            to="/chat"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-                isActive
-                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
-              }`
-            }
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Memory</span>
-          </NavLink>
-
-          <NavLink
-            to="/graph"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-                isActive
-                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
-              }`
-            }
-          >
-            <GitFork className="w-3.5 h-3.5" />
-            <span>Graph</span>
-          </NavLink>
-
-          <NavLink
-            to="/benchmark"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-                isActive
-                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
-              }`
-            }
-          >
-            <BarChart2 className="w-3.5 h-3.5" />
-            <span>Benchmark</span>
-          </NavLink>
-
-          <NavLink
-            to="/architecture"
-            className={({ isActive }) =>
-              `flex items-center gap-2 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-                isActive
-                  ? 'bg-slate-800/80 text-cyan-300 border border-cyan-500/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-850 border border-transparent'
-              }`
-            }
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            <span>Architecture</span>
-          </NavLink>
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-1.5 p-1 rounded-full bg-[#111522]/80 border border-white/[0.07] backdrop-blur-md shadow-inner" aria-label="Main Navigation">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.to;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'text-white'
+                    : 'text-[#9AA4B2] hover:text-white hover:bg-white/[0.04]'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeNavIndicator"
+                    className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]"
+                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <Icon className={`w-3.5 h-3.5 relative z-10 ${isActive ? 'text-cyan-400' : 'opacity-70'}`} />
+                <span className="relative z-10">{item.label}</span>
+              </NavLink>
+            );
+          })}
         </nav>
+
+        {/* Status Badge & CTA Button */}
+        <div className="hidden lg:flex items-center gap-4">
+          <HealthBadge />
+          <Link
+            to="/chat"
+            className="group relative inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/90 to-blue-600/90 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-medium shadow-[0_0_20px_rgba(56,189,248,0.25)] hover:shadow-[0_0_25px_rgba(56,189,248,0.4)] transition-all duration-300 font-sans"
+          >
+            <span>Ask PALIMN</span>
+            <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </Link>
+        </div>
+
+        {/* Mobile Hamburger Toggle */}
+        <div className="flex md:hidden items-center gap-3">
+          <HealthBadge />
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-1.5 rounded-lg border border-slate-800 bg-[#111522] text-slate-300 hover:text-white"
+            aria-label="Toggle Navigation Menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
 
-      {/* Primary CTA & Live Status */}
-      <div className="flex items-center gap-4">
-        <HealthBadge />
-        <Link
-          to="/chat"
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-slate-100 hover:bg-white text-graphite-950 text-xs font-mono font-medium transition-colors border border-transparent"
-        >
-          <span>Open Console</span>
-          <ArrowRight className="w-3 h-3" />
-        </Link>
-      </div>
+      {/* Mobile Drawer */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="md:hidden pt-4 pb-2 border-t border-white/[0.06] mt-3"
+          >
+            <div className="flex flex-col gap-1.5">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.to;
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
+                        : 'text-[#9AA4B2] hover:bg-white/[0.04] hover:text-white'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+              <div className="pt-2">
+                <Link
+                  to="/chat"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 text-xs font-medium font-sans"
+                >
+                  <span>Ask PALIMN</span>
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 };

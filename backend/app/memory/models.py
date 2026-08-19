@@ -51,6 +51,24 @@ class Fact(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
+class FactCandidate(BaseModel):
+    """Structured intermediate fact candidate extracted from a message clause."""
+    subject: str = Field(default="user", description="Subject entity or user")
+    predicate: str = Field(..., description="Canonical predicate/relationship")
+    object: str = Field(..., description="Core extracted object or value")
+    qualifiers: Dict[str, Any] = Field(default_factory=dict, description="Fine-grained modifiers and argument bindings")
+    entities: List[str] = Field(default_factory=list, description="Associated named entities")
+    temporal_start: Optional[str] = Field(None, description="Temporal validity start")
+    temporal_end: Optional[str] = Field(None, description="Temporal validity end / invalidation")
+    source_message_id: str = Field(..., description="Source message ID")
+    source_session_id: str = Field(..., description="Source session ID")
+    source_timestamp: Optional[str] = Field(None, description="Source message timestamp")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0, description="Extraction evidence confidence")
+    extraction_pattern: Optional[str] = Field(None, description="Pattern or rule identifier")
+    evidence_span: Optional[str] = Field(None, description="Exact clause / sentence evidence span")
+
+
+
 class Entity(BaseModel):
     id: str
     name: str

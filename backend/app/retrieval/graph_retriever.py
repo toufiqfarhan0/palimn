@@ -1,8 +1,10 @@
 """Graph-native deterministic traversal and candidate retrieval via HydraDB."""
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 import logging
-from backend.app.memory.models import Fact, MemoryStatus
+from backend.app.memory.models import Fact, FactCandidate, MemoryStatus
 from backend.app.memory.fact_extractor import DeterministicFactExtractor
+from backend.app.memory.structured_extractor import StructuredFactExtractor
+from backend.app.memory.temporal_resolver import TemporalResolver
 from backend.app.retrieval.candidate_retriever import CandidateRetriever
 from backend.app.retrieval.query_analyzer import QueryIntent
 
@@ -18,6 +20,8 @@ class GraphRetriever:
     def __init__(self, hydra_client: Any):
         self.hydra = hydra_client
         self.extractor = DeterministicFactExtractor()
+        self.structured_extractor = StructuredFactExtractor()
+        self.temporal_resolver = TemporalResolver()
         self.candidate_retriever = CandidateRetriever(self.hydra)
 
     async def retrieve_candidates(self, intent: QueryIntent) -> Tuple[List[Fact], Optional[str]]:
@@ -26,6 +30,7 @@ class GraphRetriever:
         Returns:
             Tuple of (facts_list, reasoning_summary)
         """
+        # 1. Direct Graph State Traversal (Phase 2 Pre-Seeded Synthetics)
         if intent.query_type == "current_state":
             fact = await self.hydra.find_active_fact(intent.subject, intent.predicate)
             if fact:
@@ -34,7 +39,6 @@ class GraphRetriever:
                     f"valid from {fact.valid_from or 'origin'} with status '{fact.status.value}'."
                 )
                 return [fact], reasoning
-            return [], "No active memory fact found for the requested entity."
 
         elif intent.query_type == "historical_state":
             historical_fact = await self.hydra.find_historical_fact(
@@ -47,33 +51,42 @@ class GraphRetriever:
                     f"valid from {historical_fact.valid_from} until {historical_fact.valid_until or 'invalidation'}."
                 )
                 return [historical_fact], reasoning
-            return [], "No historical/superseded memory found in the revision lineage."
 
         elif intent.query_type == "session_scoped":
-            if not intent.session_id:
-                return [], "Missing target session ID."
-            fact = await self.hydra.find_fact_by_session(
-                intent.subject, intent.predicate, intent.session_id
-            )
-            if fact:
-                reasoning = (
-                    f"Found memory fact '{fact.memory_id}' recorded in '{intent.session_id}' "
-                    f"({fact.subject} {fact.predicate} {fact.object}) with status '{fact.status.value}'."
+            if intent.session_id:
+                fact = await self.hydra.find_fact_by_session(
+                    intent.subject, intent.predicate, intent.session_id
                 )
-                return [fact], reasoning
-            return [], f"No memory record found for session '{intent.session_id}'."
+                if fact:
+                    reasoning = (
+                        f"Found memory fact '{fact.memory_id}' recorded in '{intent.session_id}' "
+                        f"({fact.subject} {fact.predicate} {fact.object}) with status '{fact.status.value}'."
+                    )
+                    return [fact], reasoning
+                return [], f"No memory record found for session '{intent.session_id}'."
+            return [], "Missing target session ID."
 
-        elif intent.query_type == "open_domain":
-            # 1. Retrieve top-k message candidates from HydraDB
-            candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
-            if not candidates:
-                return [], f"No relevant message candidates found for concepts: {intent.concepts}."
+        # 2. Structured Clause-Level Message Extraction + Temporal Resolution
+        candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
+        if not candidates:
+            return [], f"No relevant message candidates found for concepts: {intent.concepts}."
 
-            # 2. Extract facts from candidate messages in ranked order
-            extracted_facts: List[Fact] = []
-            matching_message = None
+        all_fact_candidates: List[FactCandidate] = []
+        for cand in candidates:
+            extracted = self.structured_extractor.extract_from_message(
+                content=cand.content,
+                session_id=cand.session_id,
+                message_id=cand.message_id,
+                timestamp=cand.timestamp,
+                role=cand.role,
+                subject=intent.subject,
+            )
+            all_fact_candidates.extend(extracted)
+
+        # If no structured facts extracted, fallback to legacy regex extractor
+        if not all_fact_candidates:
             for cand in candidates:
-                facts = self.extractor.extract_from_message(
+                legacy_facts = self.extractor.extract_from_message(
                     content=cand.content,
                     session_id=cand.session_id,
                     message_id=cand.message_id,
@@ -81,45 +94,48 @@ class GraphRetriever:
                     role=cand.role,
                     subject=intent.subject,
                 )
-                if facts:
-                    extracted_facts.extend(facts)
-                    matching_message = cand
-                    break
+                for lf in legacy_facts:
+                    all_fact_candidates.append(
+                        FactCandidate(
+                            subject=lf.subject,
+                            predicate=lf.predicate,
+                            object=lf.object,
+                            source_message_id=lf.message_id,
+                            source_session_id=lf.session_id,
+                            source_timestamp=lf.created_at,
+                            confidence=lf.confidence,
+                            extraction_pattern="legacy_regex",
+                            evidence_span=cand.content[:200],
+                        )
+                    )
 
-            if extracted_facts:
-                primary_fact = extracted_facts[0]
-                
-                # Check for existing fact with same subject and predicate to manage temporal revision
-                previous_active = await self.hydra.find_active_fact(primary_fact.subject, primary_fact.predicate)
-                if previous_active and previous_active.object != primary_fact.object:
-                    primary_fact.status = MemoryStatus.ACTIVE
-                    previous_active.status = MemoryStatus.SUPERSEDED
-                    previous_active.superseded_by = primary_fact.memory_id
-                    primary_fact.valid_from = primary_fact.created_at
-                    previous_active.valid_until = primary_fact.created_at
-                    
-                    # Update in-memory graph
-                    self.hydra._in_memory_store.merge_node(previous_active.memory_id, "Fact", previous_active.model_dump())
-                    self.hydra._in_memory_store.merge_edge(previous_active.memory_id, primary_fact.memory_id, "SUPERSEDES")
+        if not all_fact_candidates:
+            return [], f"No structured fact candidates extracted from {len(candidates)} candidate messages."
 
-                # Merge Fact and Entity into graph store
-                self.hydra._in_memory_store.merge_node(primary_fact.memory_id, "Fact", primary_fact.model_dump())
-                entity_id = f"entity_{primary_fact.object.lower().replace(' ', '_')}"
-                self.hydra._in_memory_store.merge_node(entity_id, "Entity", {
-                    "id": entity_id,
-                    "name": primary_fact.object,
-                    "created_at": primary_fact.created_at,
-                })
-                self.hydra._in_memory_store.merge_edge(primary_fact.message_id, primary_fact.memory_id, "SUPPORTS")
-                self.hydra._in_memory_store.merge_edge(primary_fact.memory_id, entity_id, "ABOUT")
+        resolution = self.temporal_resolver.resolve_facts_for_query(all_fact_candidates, intent)
+        if resolution.decision == "answerable" and resolution.facts:
+            primary_fact = resolution.facts[0]
+            
+            # Persist derived fact and entity into HydraDB graph store
+            self.hydra._in_memory_store.merge_node(primary_fact.memory_id, "Fact", primary_fact.model_dump())
+            clean_entity_name = primary_fact.object.lower().replace(" ", "_").replace("$", "usd_")
+            entity_id = f"entity_{clean_entity_name}"
+            self.hydra._in_memory_store.merge_node(entity_id, "Entity", {
+                "id": entity_id,
+                "name": primary_fact.object,
+                "created_at": primary_fact.created_at,
+            })
+            self.hydra._in_memory_store.merge_edge(primary_fact.message_id, primary_fact.memory_id, "SUPPORTS")
+            self.hydra._in_memory_store.merge_edge(primary_fact.memory_id, entity_id, "ABOUT")
 
-                reasoning = (
-                    f"Retrieved candidate message '{matching_message.message_id}' in '{matching_message.session_id}' "
-                    f"(Score: {matching_message.score}) and extracted fact '{primary_fact.object}' "
-                    f"for relationship '{primary_fact.predicate}'."
-                )
-                return [primary_fact], reasoning
+            # Check if there is an existing older fact with the same predicate to link SUPERSEDES
+            for existing_id, node_data in self.hydra._in_memory_store.nodes.items():
+                if node_data.get("label") == "Fact" and existing_id != primary_fact.memory_id:
+                    props = node_data.get("properties", {})
+                    if props.get("subject") == primary_fact.subject and props.get("predicate") == primary_fact.predicate:
+                        # Link newer fact to older fact with SUPERSEDES edge
+                        self.hydra._in_memory_store.merge_edge(primary_fact.memory_id, existing_id, "SUPERSEDES")
 
-            return [], f"No structured fact could be extracted from {len(candidates)} candidate messages."
+            return [primary_fact], resolution.reasoning
 
-        return [], "Unknown query intent."
+        return [], resolution.reasoning or "Abstained due to insufficient or conflicting evidence."

@@ -96,19 +96,30 @@ class LongMemEvalEvaluator:
             exp_tokens = set(expected_str.split())
             partial_match = exact_match or (bool(pred_tokens & exp_tokens))
 
-        # Failure Classification
+        # Failure Classification (Step 29 Ontology)
         failure_cat = None
         if not exact_match:
             if intent.query_type == "unknown":
                 failure_cat = "query_understanding"
             elif not top_20_recall and target_session_ids:
                 failure_cat = "candidate_retrieval"
-            elif top_20_recall and not retrieved_facts:
-                failure_cat = "fact_extraction"
-            elif retrieved_facts and not exact_match:
-                failure_cat = "fact_extraction"
             elif is_abstention_q and decision != "abstain":
                 failure_cat = "abstention"
+            elif decision == "abstain" and not is_abstention_q:
+                if top_20_recall:
+                    failure_cat = "fact_extraction"
+                else:
+                    failure_cat = "candidate_retrieval"
+            elif retrieved_facts and not exact_match:
+                q_lower = record.question.lower()
+                if any(w in q_lower for w in ["before", "previously", "prior", "last name before", "did i live before"]):
+                    failure_cat = "revision_resolution"
+                elif any(w in q_lower for w in ["now", "currently", "today"]):
+                    failure_cat = "temporal_reasoning"
+                elif partial_match:
+                    failure_cat = "entity_binding"
+                else:
+                    failure_cat = "fact_extraction"
             else:
                 failure_cat = "other"
 

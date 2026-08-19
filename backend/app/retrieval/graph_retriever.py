@@ -69,7 +69,7 @@ class GraphRetriever:
             return [], "Missing target session ID."
 
         # 2. Retrieve Candidate Messages
-        candidates = self.candidate_retriever.retrieve_candidate_messages(intent, top_k=20)
+        candidates = await self.candidate_retriever.retrieve_candidate_messages_async(intent, top_k=20)
         if not candidates:
             return [], f"No relevant message candidates found for concepts: {intent.concepts}."
 

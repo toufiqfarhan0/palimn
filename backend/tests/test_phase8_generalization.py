@@ -10,7 +10,7 @@ from backend.app.retrieval.query_analyzer import QueryAnalyzer
 
 @pytest.fixture
 def hydra_client():
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     return client
 

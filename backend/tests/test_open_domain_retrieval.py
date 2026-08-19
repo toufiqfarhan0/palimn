@@ -93,7 +93,7 @@ def test_deterministic_fact_extraction():
 @pytest.mark.asyncio
 async def test_candidate_retrieval_and_user_priority():
     """Verify user messages score higher than assistant messages containing the same terms."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     # Add User node
@@ -133,7 +133,7 @@ async def test_candidate_retrieval_and_user_priority():
 @pytest.mark.asyncio
 async def test_temporal_filtering_prevents_future_leakage():
     """Verify temporal context filters out future messages."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     # Message before question date
@@ -174,7 +174,7 @@ async def test_temporal_filtering_prevents_future_leakage():
 @pytest.mark.asyncio
 async def test_open_domain_e2e_answerable():
     """Verify full end-to-end open-domain retrieval produces answer and provenance."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     client._in_memory_store.merge_node("msg_1", "Message", {
@@ -207,7 +207,7 @@ async def test_open_domain_e2e_answerable():
 @pytest.mark.asyncio
 async def test_open_domain_abstention_on_unrecorded():
     """Verify unrecorded open-domain query returns abstention without hallucination."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     analyzer = QueryAnalyzer()

@@ -6,7 +6,7 @@ from backend.app.memory.models import MemoryStatus
 
 @pytest.fixture
 def hydra_client():
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.seed_synthetic_data()
     return client
 

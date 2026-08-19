@@ -83,7 +83,7 @@ def test_dataset_loader():
 @pytest.mark.asyncio
 async def test_single_record_ingestion_and_idempotency(sample_raw_record):
     """Verify single-record ingestion into graph and idempotency upon re-ingestion."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     record = normalize_raw_record(sample_raw_record)
@@ -111,7 +111,7 @@ async def test_single_record_ingestion_and_idempotency(sample_raw_record):
 @pytest.mark.asyncio
 async def test_oracle_isolation_and_evaluation(sample_raw_record):
     """Verify retrieval input is strictly isolated from gold answer and oracle evidence."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.seed_synthetic_data()
     
     record = normalize_raw_record(sample_raw_record)

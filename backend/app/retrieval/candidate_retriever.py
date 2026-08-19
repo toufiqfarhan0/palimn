@@ -31,13 +31,30 @@ class CandidateRetriever:
     def __init__(self, hydra_client: Any):
         self.hydra = hydra_client
 
+    async def retrieve_candidate_messages_async(
+        self, intent: QueryIntent, top_k: int = 30
+    ) -> List[MessageCandidate]:
+        """Asynchronously fetch candidate messages from HydraDB Cloud or local store with transparent scoring."""
+        # 1. Cloud Mode Retrieval Path
+        if getattr(self.hydra, "mode", "local") == "cloud" and self.hydra.is_configured:
+            query_str = intent.raw_query if len(intent.raw_query.split()) > 1 else (" ".join(intent.keywords + intent.concepts) or intent.raw_query)
+            cloud_candidates = await self.hydra.cloud_store.query_candidates(
+                query=query_str,
+                user_id=intent.subject if (intent.subject and intent.subject != "user_demo") else None,
+                max_results=top_k * 2,
+            )
+            if cloud_candidates:
+                return self._score_candidates(cloud_candidates, intent, top_k)
+
+        # 2. Local In-Memory Store Path (Unit Tests)
+        return self.retrieve_candidate_messages(intent, top_k)
+
     def retrieve_candidate_messages(
         self, intent: QueryIntent, top_k: int = 30
     ) -> List[MessageCandidate]:
-        """Fetch candidate messages matching query concepts with transparent scoring."""
+        """Synchronously fetch candidate messages from in-memory store matching query concepts."""
         store = self.hydra._in_memory_store
         
-        # 1. Collect candidate message nodes using fast index lookup when possible
         raw_messages: List[Dict[str, Any]] = []
         target_user = intent.subject if (intent.subject and intent.subject != "user_demo") else None
         
@@ -68,15 +85,21 @@ class CandidateRetriever:
         if not raw_messages:
             return []
 
-        # 2. Score candidate messages deterministically
+        return self._score_candidates(raw_messages, intent, top_k)
+
+    def _score_candidates(
+        self, raw_messages: List[Dict[str, Any]], intent: QueryIntent, top_k: int
+    ) -> List[MessageCandidate]:
+        """Apply deterministic scoring, concept coverage bonus, and role multiplier."""
         query_keywords = intent.keywords
         query_concepts = intent.concepts
         term_weights = intent.term_weights
 
         candidates: List[MessageCandidate] = []
+        target_user = intent.subject if (intent.subject and intent.subject != "user_demo") else None
 
         for msg in raw_messages:
-            content = msg.get("content", "")
+            content = msg.get("content", "") or msg.get("text", "")
             content_lower = content.lower()
             tokens = re.findall(r"\b[a-zA-Z0-9_\$-]+\b", content_lower)
             stemmed_tokens = [stem_token(t) for t in tokens]
@@ -95,13 +118,16 @@ class CandidateRetriever:
             # Distinct concept coverage bonus
             coverage_bonus = len(set(stem_matches)) * 1.5
             
+            # Base cloud relevancy score (when candidate was retrieved from HydraDB Cloud)
+            cloud_relevancy = float(msg.get("score", 0.0)) * 5.0
+            
             # User authorship priority (boost user messages significantly)
             role = str(msg.get("role", "user")).lower()
             role_mult = 2.5 if role == "user" else 0.8
 
-            raw_total = (exact_score + stem_score + coverage_bonus) * role_mult
+            raw_total = (exact_score + stem_score + coverage_bonus + cloud_relevancy) * role_mult
             
-            if raw_total >= 1.0 or (target_user and len(candidate_pool) <= 20):
+            if raw_total >= 1.0 or len(raw_messages) <= 30:
                 score_val = max(raw_total, 0.5)
                 breakdown = {
                     "exact_score": round(exact_score, 2),
@@ -111,9 +137,9 @@ class CandidateRetriever:
                 }
                 candidates.append(
                     MessageCandidate(
-                        message_id=msg.get("id", "unknown_msg"),
+                        message_id=msg.get("id") or msg.get("message_id") or "unknown_msg",
                         session_id=msg.get("session_id", "unknown_sess"),
-                        session_date=msg.get("timestamp"),
+                        session_date=msg.get("timestamp") or msg.get("session_date"),
                         timestamp=msg.get("timestamp"),
                         role=role,
                         content=content,
@@ -123,6 +149,6 @@ class CandidateRetriever:
                     )
                 )
 
-        # 3. Sort descending by score, ensuring user messages are prioritized
+        # Sort descending by score, prioritizing user turns
         candidates.sort(key=lambda c: (c.role == "user", c.score), reverse=True)
         return candidates[:top_k]

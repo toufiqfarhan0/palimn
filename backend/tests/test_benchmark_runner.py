@@ -26,7 +26,7 @@ def test_deterministic_sampling():
 @pytest.mark.asyncio
 async def test_memory_namespace_isolation():
     """Verify memory from question A does not leak into question B."""
-    client = HydraClient()
+    client = HydraClient(mode="local")
     client._in_memory_store.clear()
     
     # Ingest record A

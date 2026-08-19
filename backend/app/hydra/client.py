@@ -1,13 +1,13 @@
-"""HydraDB Cloud Client abstraction for PALIMN.
+"""HydraDB Client abstraction for PALIMN.
 
-Isolates all HTTP/Bolt communication with HydraDB Cloud.
-Provides resilient connection handling, structured querying, health verification,
-and deterministic in-memory graph synchronization with high-performance secondary indexing.
+Provides resilient integration with HydraDB Cloud using the official SDK,
+with strict separation between production Cloud persistence and local unit-test doubles.
 """
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
 import logging
-import httpx
+import os
+import sys
 import time
 from backend.app.core.config import settings
 from backend.app.memory.models import (
@@ -23,13 +23,13 @@ from backend.app.memory.models import (
     StructuredIngestRequest,
 )
 from backend.app.benchmark.models import LongMemEvalRecord
-from backend.app.hydra.queries import SEED_SYNTHETIC_TEMPORAL_GRAPH
+from backend.app.hydra.cloud_store import HydraCloudStore
 
 logger = logging.getLogger("palimn.hydra")
 
 
 class InMemoryGraphStore:
-    """Deterministic in-memory graph repository providing Cypher-consistent graph semantics and fast indexing."""
+    """Deterministic in-memory graph repository providing Cypher-consistent graph semantics for unit tests."""
 
     def __init__(self):
         self.nodes: Dict[str, Dict[str, Any]] = {}
@@ -90,15 +90,12 @@ class InMemoryGraphStore:
         return new_edge
 
     def seed_synthetic_data(self) -> Dict[str, int]:
-        """Idempotently seed the synthetic Bangalore -> Hyderabad temporal memory graph."""
-        # 1. User
+        """Seed synthetic demo data for unit tests."""
         self.merge_node("user_demo", "User", {
             "id": "user_demo",
             "name": "Demo User",
             "created_at": "2025-01-10T00:00:00Z",
         })
-
-        # 2. Session 01 & Message 01
         self.merge_node("session_01", "Session", {
             "id": "session_01",
             "session_index": 1,
@@ -114,8 +111,6 @@ class InMemoryGraphStore:
             "content": "I live in Bangalore.",
             "timestamp": "2025-01-10T10:00:00Z",
         })
-
-        # 3. Session 02 & Message 02
         self.merge_node("session_02", "Session", {
             "id": "session_02",
             "session_index": 2,
@@ -131,8 +126,6 @@ class InMemoryGraphStore:
             "content": "I moved to Hyderabad.",
             "timestamp": "2025-03-15T14:30:00Z",
         })
-
-        # 4. Entities
         self.merge_node("entity_bangalore", "Entity", {
             "id": "entity_bangalore",
             "name": "Bangalore",
@@ -145,8 +138,6 @@ class InMemoryGraphStore:
             "entity_type": "Location",
             "created_at": "2025-03-15T14:30:00Z",
         })
-
-        # 5. Facts (Fact A: superseded, Fact B: active)
         self.merge_node("fact_001", "Fact", {
             "id": "fact_001",
             "memory_id": "fact_001",
@@ -178,14 +169,11 @@ class InMemoryGraphStore:
             "confidence": 1.0,
         })
 
-        # 6. Structure & Temporal Relationships
         self.merge_edge("user_demo", "session_01", "HAS_SESSION")
         self.merge_edge("user_demo", "session_02", "HAS_SESSION")
         self.merge_edge("session_01", "session_02", "PRECEDES")
         self.merge_edge("session_01", "msg_01", "CONTAINS")
         self.merge_edge("session_02", "msg_02", "CONTAINS")
-
-        # 7. Mentions & Support Relationships
         self.merge_edge("msg_01", "entity_bangalore", "MENTIONS")
         self.merge_edge("msg_02", "entity_hyderabad", "MENTIONS")
         self.merge_edge("msg_01", "fact_001", "SUPPORTS")
@@ -194,8 +182,6 @@ class InMemoryGraphStore:
         self.merge_edge("fact_002", "msg_02", "SUPPORTED_BY")
         self.merge_edge("fact_001", "entity_bangalore", "ABOUT")
         self.merge_edge("fact_002", "entity_hyderabad", "ABOUT")
-
-        # 8. SUPERSEDES Relationship (Fact B supersedes Fact A)
         self.merge_edge("fact_002", "fact_001", "SUPERSEDES")
 
         return {
@@ -212,7 +198,7 @@ class InMemoryGraphStore:
 
 
 class HydraClient:
-    """Resilient client for HydraDB Cloud instance."""
+    """Production HydraDB Client managing Cloud persistence and local test execution."""
 
     def __init__(
         self,
@@ -226,9 +212,18 @@ class HydraClient:
         self.database = database if database is not None else settings.HYDRA_DB_DATABASE
         self.mode = mode if mode is not None else settings.HYDRA_MODE
         self.timeout = 10.0
+        
+        # Cloud store adapter
+        self.cloud_store = HydraCloudStore(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            database=self.database,
+        )
+        
+        # Test double store (used strictly for isolated unit tests)
         self._in_memory_store = InMemoryGraphStore()
-        # Seed in-memory store by default for deterministic local runtime
-        self._in_memory_store.seed_synthetic_data()
+        if self.mode != "cloud":
+            self._in_memory_store.seed_synthetic_data()
 
     @property
     def is_configured(self) -> bool:
@@ -248,8 +243,22 @@ class HydraClient:
             "X-Hydra-Mode": self.mode,
         }
 
+    async def execute_query(
+        self, query: str, params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Execute a query against HydraDB Cloud."""
+        if not self.is_configured:
+            raise ConnectionError(
+                "HydraDB credentials not configured. Please set HYDRA_DB_BASE_URL and HYDRA_DB_API_KEY in .env"
+            )
+        res = await self.cloud_store.client.query(
+            database=self.database,
+            query=query,
+        )
+        return res.model_dump() if hasattr(res, "model_dump") else dict(res)
+
     async def health_check(self) -> Dict[str, Any]:
-        """Check HydraDB Cloud availability and credentials."""
+        """Check HydraDB Cloud availability and database infrastructure readiness."""
         if not self.is_configured:
             return {
                 "connected": False,
@@ -260,107 +269,112 @@ class HydraClient:
                 "base_url": self.base_url or None,
             }
 
-        start_time = time.perf_counter()
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                health_url = f"{self.base_url}/health" if not self.base_url.endswith("/health") else self.base_url
-                response = await client.get(health_url, headers=self._get_headers())
-                latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
-
-                if response.status_code in (200, 204):
-                    return {
-                        "connected": True,
-                        "status": "healthy",
-                        "latency_ms": latency_ms,
-                        "database": self.database,
-                        "mode": self.mode,
-                        "base_url": self.base_url,
-                    }
-                else:
-                    return {
-                        "connected": False,
-                        "status": "degraded",
-                        "status_code": response.status_code,
-                        "reason": f"HydraDB returned status {response.status_code}: {response.text[:200]}",
-                        "latency_ms": latency_ms,
-                        "database": self.database,
-                        "mode": self.mode,
-                    }
-        except httpx.RequestError as exc:
-            logger.warning("HydraDB health check failed: %s", exc)
-            return {
-                "connected": False,
-                "status": "unreachable",
-                "reason": f"Failed to connect to HydraDB Cloud: {str(exc)}",
-                "database": self.database,
-                "mode": self.mode,
-                "base_url": self.base_url,
-            }
-        except Exception as exc:
-            logger.error("Unexpected error checking HydraDB: %s", exc)
-            return {
-                "connected": False,
-                "status": "error",
-                "reason": str(exc),
-                "database": self.database,
-                "mode": self.mode,
-            }
-
-    async def execute_query(
-        self, query: str, params: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Execute a graph query against HydraDB Cloud or fallback in-memory store."""
-        if not self.is_configured:
-            raise ConnectionError(
-                "HydraDB credentials not configured. Please set HYDRA_DB_BASE_URL and HYDRA_DB_API_KEY in .env"
-            )
-
-        payload = {
-            "query": query,
-            "params": params or {},
-            "database": self.database,
-        }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            query_url = f"{self.base_url}/query"
-            response = await client.post(
-                query_url, json=payload, headers=self._get_headers()
-            )
-            response.raise_for_status()
-            return response.json()
+        res = await self.cloud_store.check_infrastructure()
+        res["mode"] = self.mode
+        res["base_url"] = self.base_url
+        return res
 
     async def seed_synthetic_temporal_graph(self) -> Dict[str, Any]:
-        """Idempotently seed the synthetic temporal memory graph."""
-        if self.is_configured:
-            try:
-                await self.execute_query(SEED_SYNTHETIC_TEMPORAL_GRAPH)
-            except Exception as exc:
-                logger.warning("Cloud seed execution failed, using local synchronization: %s", exc)
-
-        summary = self._in_memory_store.seed_synthetic_data()
-        return summary
+        """Idempotently seed the synthetic temporal memory graph into HydraDB Cloud."""
+        if self.mode == "cloud":
+            if not self.is_configured:
+                raise ConnectionError("Cannot seed HydraDB Cloud: credentials unconfigured.")
+            
+            items = [
+                {
+                    "id": "msg_01",
+                    "text": "I live in Bangalore.",
+                    "metadata": {
+                        "user_id": "user_demo",
+                        "session_id": "session_01",
+                        "session_index": 1,
+                        "timestamp": "2025-01-10T10:00:00Z",
+                        "session_date": "2025-01-10",
+                        "role": "user",
+                        "predicate": "lives_in",
+                        "object": "Bangalore",
+                        "status": "superseded",
+                    },
+                },
+                {
+                    "id": "msg_02",
+                    "text": "I moved to Hyderabad.",
+                    "metadata": {
+                        "user_id": "user_demo",
+                        "session_id": "session_02",
+                        "session_index": 2,
+                        "timestamp": "2025-03-15T14:30:00Z",
+                        "session_date": "2025-03-15",
+                        "role": "user",
+                        "predicate": "lives_in",
+                        "object": "Hyderabad",
+                        "status": "active",
+                    },
+                },
+            ]
+            cloud_res = await self.cloud_store.ingest_memories(items, wait_indexing=True)
+            self._in_memory_store.seed_synthetic_data()
+            return {
+                "users": 1,
+                "sessions": 2,
+                "messages": 2,
+                "entities": 2,
+                "facts": 2,
+                "supersedes": 1,
+                "precedes": 1,
+                "cloud_status": cloud_res.get("status"),
+                "total_nodes": 9,
+                "total_edges": 13,
+            }
+        else:
+            return self._in_memory_store.seed_synthetic_data()
 
     async def ingest_structured_memory(self, req: StructuredIngestRequest) -> Dict[str, Any]:
         """Ingest a structured session memory with automatic revision detection."""
-        # 1. Merge User
+        if self.mode == "cloud":
+            if not self.is_configured:
+                raise ConnectionError("HydraDB Cloud unconfigured for structured memory ingestion.")
+            
+            items = []
+            for idx, f_in in enumerate(req.facts):
+                items.append({
+                    "id": f"{req.message_id}_{idx+1}",
+                    "text": f"{req.content} ({f_in.subject} {f_in.predicate} {f_in.object})",
+                    "metadata": {
+                        "user_id": req.user_id,
+                        "session_id": req.session_id,
+                        "session_date": req.session_date,
+                        "message_id": req.message_id,
+                        "subject": f_in.subject,
+                        "predicate": f_in.predicate,
+                        "object": f_in.object,
+                        "valid_from": f_in.valid_from or req.session_date,
+                        "valid_until": f_in.valid_until,
+                        "confidence": f_in.confidence,
+                        "status": "active",
+                    },
+                })
+            
+            await self.cloud_store.ingest_memories(items, wait_indexing=True)
+            local_res = self._ingest_structured_memory_local(req)
+            local_res["cloud_persisted"] = True
+            return local_res
+        else:
+            return self._ingest_structured_memory_local(req)
+
+    def _ingest_structured_memory_local(self, req: StructuredIngestRequest) -> Dict[str, Any]:
         self._in_memory_store.merge_node(req.user_id, "User", {
             "id": req.user_id,
             "created_at": datetime.now().isoformat(),
         })
-
-        # 2. Merge Session
-        session_idx = 1
-        if "02" in req.session_id or "2" in req.session_id:
-            session_idx = 2
         self._in_memory_store.merge_node(req.session_id, "Session", {
             "id": req.session_id,
             "user_id": req.user_id,
-            "session_index": session_idx,
+            "session_index": 1,
             "date": req.session_date,
             "created_at": datetime.now().isoformat(),
         })
         self._in_memory_store.merge_edge(req.user_id, req.session_id, "HAS_SESSION")
-
-        # 3. Merge Message
         self._in_memory_store.merge_node(req.message_id, "Message", {
             "id": req.message_id,
             "session_id": req.session_id,
@@ -370,72 +384,47 @@ class HydraClient:
             "timestamp": f"{req.session_date}T12:00:00Z",
         })
         self._in_memory_store.merge_edge(req.session_id, req.message_id, "CONTAINS")
-
-        # 4. Ingest Facts and Resolve Supersedes
+        
         revisions_count = 0
         for idx, f_in in enumerate(req.facts):
             fact_id = f"fact_{req.session_id}_{idx+1}"
             entity_id = f"entity_{f_in.object.lower()}"
             
-            # Merge Entity
+            # Detect revision of existing active fact for same subject + predicate
+            for node_id, node in list(self._in_memory_store.nodes.items()):
+                if node.get("label") == "Fact":
+                    p = node.get("properties", {})
+                    if (
+                        p.get("subject", "").lower() == f_in.subject.lower()
+                        and p.get("predicate", "").lower() == f_in.predicate.lower()
+                        and p.get("status") == MemoryStatus.ACTIVE.value
+                        and p.get("object", "").lower() != f_in.object.lower()
+                    ):
+                        p["status"] = MemoryStatus.SUPERSEDED.value
+                        p["valid_until"] = req.session_date
+                        self._in_memory_store.merge_edge(fact_id, node_id, "SUPERSEDES")
+                        revisions_count += 1
+
             self._in_memory_store.merge_node(entity_id, "Entity", {
                 "id": entity_id,
                 "name": f_in.object,
-                "entity_type": "Location" if "live" in f_in.predicate else "Concept",
                 "created_at": f"{req.session_date}T12:00:00Z",
             })
-
-            # Check for existing active facts with same subject & predicate to supersede
-            previous_active = await self.find_active_fact(f_in.subject, f_in.predicate)
-            if previous_active and previous_active.object != f_in.object:
-                # Mark previous fact as superseded
-                old_node = self._in_memory_store.nodes.get(previous_active.memory_id)
-                if old_node:
-                    old_node["properties"]["status"] = MemoryStatus.SUPERSEDED.value
-                    old_node["properties"]["valid_until"] = req.session_date
-                
-                # New fact is active
-                self._in_memory_store.merge_node(fact_id, "Fact", {
-                    "id": fact_id,
-                    "memory_id": fact_id,
-                    "subject": f_in.subject,
-                    "predicate": f_in.predicate,
-                    "object": f_in.object,
-                    "session_id": req.session_id,
-                    "message_id": req.message_id,
-                    "session_date": req.session_date,
-                    "created_at": f"{req.session_date}T12:00:00Z",
-                    "valid_from": f_in.valid_from or req.session_date,
-                    "valid_until": None,
-                    "status": MemoryStatus.ACTIVE.value,
-                    "confidence": f_in.confidence,
-                })
-                # Link SUPERSEDES
-                self._in_memory_store.merge_edge(fact_id, previous_active.memory_id, "SUPERSEDES")
-                revisions_count += 1
-            else:
-                self._in_memory_store.merge_node(fact_id, "Fact", {
-                    "id": fact_id,
-                    "memory_id": fact_id,
-                    "subject": f_in.subject,
-                    "predicate": f_in.predicate,
-                    "object": f_in.object,
-                    "session_id": req.session_id,
-                    "message_id": req.message_id,
-                    "session_date": req.session_date,
-                    "created_at": f"{req.session_date}T12:00:00Z",
-                    "valid_from": f_in.valid_from or req.session_date,
-                    "valid_until": f_in.valid_until,
-                    "status": MemoryStatus.ACTIVE.value,
-                    "confidence": f_in.confidence,
-                })
-
-            # Relationships
+            self._in_memory_store.merge_node(fact_id, "Fact", {
+                "id": fact_id,
+                "memory_id": fact_id,
+                "subject": f_in.subject,
+                "predicate": f_in.predicate,
+                "object": f_in.object,
+                "session_id": req.session_id,
+                "message_id": req.message_id,
+                "session_date": req.session_date,
+                "status": MemoryStatus.ACTIVE.value,
+                "confidence": f_in.confidence,
+            })
             self._in_memory_store.merge_edge(req.message_id, entity_id, "MENTIONS")
             self._in_memory_store.merge_edge(req.message_id, fact_id, "SUPPORTS")
-            self._in_memory_store.merge_edge(fact_id, req.message_id, "SUPPORTED_BY")
-            self._in_memory_store.merge_edge(fact_id, entity_id, "ABOUT")
-
+            
         return {
             "session_id": req.session_id,
             "facts_extracted": len(req.facts),
@@ -445,28 +434,59 @@ class HydraClient:
         }
 
     async def ingest_longmemeval_record(self, record: LongMemEvalRecord) -> Dict[str, Any]:
-        """Faithfully ingest a LongMemEval_S record into the temporal memory graph.
-        
-        Strict Invariant:
-        - Ingests User, Session, and Message nodes with chronological PRECEDES edges.
-        - NEVER exposes gold answer or oracle evidence flags into retrieval memory.
-        - Preserves deterministic IDs and complete session chronology.
-        """
-        # 1. Merge User
+        """Ingest a LongMemEval_S record into persistent HydraDB Cloud storage."""
+        if self.mode == "cloud":
+            if not self.is_configured:
+                raise ConnectionError("Cannot ingest LongMemEval to HydraDB Cloud: credentials unconfigured.")
+            
+            memory_items = []
+            for session in record.sessions:
+                for msg in session.messages:
+                    memory_items.append({
+                        "id": msg.message_id,
+                        "text": msg.content,
+                        "metadata": {
+                            "question_id": record.question_id,
+                            "user_id": record.user_id,
+                            "session_id": session.session_id,
+                            "session_index": session.session_index,
+                            "session_date": session.date,
+                            "timestamp": msg.timestamp or session.date,
+                            "role": msg.role,
+                            "question_date": record.question_date,
+                        },
+                    })
+            
+            upload_res = await self.cloud_store.ingest_memories(
+                items=memory_items,
+                collection=None,
+                wait_indexing=True,
+            )
+            self._ingest_longmemeval_local(record)
+            return {
+                "question_id": record.question_id,
+                "user_id": record.user_id,
+                "sessions_ingested": len(record.sessions),
+                "messages_ingested": len(memory_items),
+                "earliest_session": record.sessions[0].date if record.sessions else None,
+                "latest_session": record.sessions[-1].date if record.sessions else None,
+                "status": "success",
+                "cloud_persisted": True,
+            }
+        else:
+            return self._ingest_longmemeval_local(record)
+
+    def _ingest_longmemeval_local(self, record: LongMemEvalRecord) -> Dict[str, Any]:
         self._in_memory_store.merge_node(record.user_id, "User", {
             "id": record.user_id,
             "name": f"User {record.question_id}",
             "question_id": record.question_id,
             "created_at": record.sessions[0].date if record.sessions else datetime.now().isoformat(),
         })
-
         total_sessions = len(record.sessions)
         total_messages = 0
-
-        # 2. Ingest Sessions & Messages in strict chronological order
         prev_session_id: Optional[str] = None
         for session in record.sessions:
-            # Merge Session
             self._in_memory_store.merge_node(session.session_id, "Session", {
                 "id": session.session_id,
                 "user_id": record.user_id,
@@ -476,13 +496,9 @@ class HydraClient:
                 "question_id": record.question_id,
             })
             self._in_memory_store.merge_edge(record.user_id, session.session_id, "HAS_SESSION")
-
-            # Chronological PRECEDES link
             if prev_session_id is not None:
                 self._in_memory_store.merge_edge(prev_session_id, session.session_id, "PRECEDES")
             prev_session_id = session.session_id
-
-            # Merge Messages (no oracle leakage: has_answer is not stored as a retrieval fact)
             for msg in session.messages:
                 self._in_memory_store.merge_node(msg.message_id, "Message", {
                     "id": msg.message_id,
@@ -495,7 +511,6 @@ class HydraClient:
                 })
                 self._in_memory_store.merge_edge(session.session_id, msg.message_id, "CONTAINS")
                 total_messages += 1
-
         return {
             "question_id": record.question_id,
             "user_id": record.user_id,
@@ -523,20 +538,14 @@ class HydraClient:
         self, subject: str, predicate: str, reference_object: Optional[str] = None
     ) -> Optional[Fact]:
         """Follow SUPERSEDES backwards from active or reference fact to find predecessor."""
-        # Find active fact first
         active_fact = await self.find_active_fact(subject, predicate)
-        if not active_fact:
-            return None
+        if active_fact:
+            for edge in self._in_memory_store.edges:
+                if edge.get("type") == "SUPERSEDES" and edge.get("source") == active_fact.memory_id:
+                    target_node = self._in_memory_store.nodes.get(edge.get("target"))
+                    if target_node:
+                        return self._node_to_fact(target_node)
 
-        # Look for SUPERSEDES edge originating from active fact
-        for edge in self._in_memory_store.edges:
-            if edge.get("type") == "SUPERSEDES" and edge.get("source") == active_fact.memory_id:
-                target_node_id = edge.get("target")
-                target_node = self._in_memory_store.nodes.get(target_node_id)
-                if target_node:
-                    return self._node_to_fact(target_node)
-
-        # Fallback search for any superseded fact matching subject and predicate
         for node in self._in_memory_store.nodes.values():
             if node.get("label") == "Fact":
                 p = node.get("properties", {})
@@ -597,7 +606,7 @@ class HydraClient:
         return results
 
     async def get_graph(self, limit: int = 100) -> Dict[str, Any]:
-        """Retrieve full graph snapshot for React Flow visualizer."""
+        """Retrieve graph snapshot for React Flow visualizer."""
         nodes: List[Dict[str, Any]] = []
         edges: List[Dict[str, Any]] = []
 
@@ -606,7 +615,6 @@ class HydraClient:
             props = n.get("properties", {})
             name = props.get("name") or props.get("id") or node_id
             
-            # Format display label
             if label == "Fact":
                 display_label = f"Fact: {props.get('predicate')} {props.get('object')} ({props.get('status')})"
             elif label == "Session":
@@ -670,11 +678,14 @@ class HydraClient:
         )
 
     async def reset_database(self) -> Dict[str, Any]:
-        """Safely clear database data."""
+        """Safely clear database data from Cloud and local store."""
         self._in_memory_store.clear()
-        if self.is_configured:
+        if self.mode == "cloud" and self.is_configured:
             try:
-                await self.execute_query("MATCH (n) DETACH DELETE n")
+                sources = await self.cloud_store.list_sources(page_size=100)
+                source_ids = [s.get("memory_id") or s.get("id") for s in sources if s.get("memory_id") or s.get("id")]
+                if source_ids:
+                    await self.cloud_store.delete_sources(source_ids)
             except Exception as exc:
                 logger.warning("Cloud reset failed: %s", exc)
         return {"status": "success", "cleared": True}

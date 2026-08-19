@@ -32,16 +32,18 @@ class CandidateRetriever:
         self.hydra = hydra_client
 
     async def retrieve_candidate_messages_async(
-        self, intent: QueryIntent, top_k: int = 30
+        self, intent: QueryIntent, top_k: int = 30, **query_kwargs: Any
     ) -> List[MessageCandidate]:
         """Asynchronously fetch candidate messages from HydraDB Cloud or local store with transparent scoring."""
         # 1. Cloud Mode Retrieval Path
         if getattr(self.hydra, "mode", "local") == "cloud" and self.hydra.is_configured:
             query_str = intent.raw_query if len(intent.raw_query.split()) > 1 else (" ".join(intent.keywords + intent.concepts) or intent.raw_query)
+            max_res = query_kwargs.pop("max_results", top_k * 2)
             cloud_candidates = await self.hydra.cloud_store.query_candidates(
                 query=query_str,
                 user_id=intent.subject if (intent.subject and intent.subject != "user_demo") else None,
-                max_results=top_k * 2,
+                max_results=max_res,
+                **query_kwargs,
             )
             if cloud_candidates:
                 return self._score_candidates(cloud_candidates, intent, top_k)

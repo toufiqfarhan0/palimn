@@ -240,6 +240,10 @@ class HydraCloudStore:
         collection: Optional[str] = None,
         max_results: int = 20,
         user_id: Optional[str] = None,
+        mode: Optional[str] = None,
+        num_related_chunks: Optional[int] = None,
+        graph_context: bool = True,
+        **kwargs: Any,
     ) -> List[Dict[str, Any]]:
         """Retrieve candidate memory records and graph context from HydraDB Cloud.
         
@@ -247,14 +251,21 @@ class HydraCloudStore:
             List of candidate dictionaries with content, metadata, score, and graph relations.
         """
         logger.debug("Executing cloud retrieval for query: '%s'", query)
-        res = await self.client.query(
-            database=self.database,
-            collection=collection,
-            query=query,
-            type="memory",
-            max_results=max_results,
-            graph_context=True,
-        )
+        query_payload: Dict[str, Any] = {
+            "database": self.database,
+            "collection": collection,
+            "query": query,
+            "type": "memory",
+            "max_results": max_results,
+            "graph_context": graph_context,
+        }
+        if mode is not None:
+            query_payload["mode"] = mode
+        if num_related_chunks is not None:
+            query_payload["num_related_chunks"] = num_related_chunks
+        query_payload.update(kwargs)
+
+        res = await self.client.query(**query_payload)
 
         candidates: List[Dict[str, Any]] = []
         if not res.success or not res.data:

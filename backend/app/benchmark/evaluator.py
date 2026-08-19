@@ -21,7 +21,9 @@ class LongMemEvalEvaluator:
         self.candidate_retriever = CandidateRetriever(self.hydra)
         self.graph_retriever = GraphRetriever(self.hydra)
 
-    async def evaluate_record(self, record: LongMemEvalRecord) -> EvaluationResult:
+    async def evaluate_record(
+        self, record: LongMemEvalRecord, **query_kwargs: Any
+    ) -> EvaluationResult:
         """Run single record evaluation with strict separation between retrieval and oracle."""
         t_start = time.perf_counter()
 
@@ -39,12 +41,16 @@ class LongMemEvalEvaluator:
 
         # 2. Candidate Retrieval & Scoring
         t_ret_start = time.perf_counter()
-        candidates = await self.candidate_retriever.retrieve_candidate_messages_async(intent, top_k=20)
+        candidates = await self.candidate_retriever.retrieve_candidate_messages_async(
+            intent, top_k=20, **query_kwargs
+        )
         t_ret_ms = round((time.perf_counter() - t_ret_start) * 1000, 2)
 
         # 3. Fact Extraction & Resolution
         t_fe_start = time.perf_counter()
-        retrieved_facts, reasoning = await self.graph_retriever.retrieve_candidates(intent)
+        retrieved_facts, reasoning = await self.graph_retriever.retrieve_candidates(
+            intent, candidates=candidates, **query_kwargs
+        )
         t_fe_ms = round((time.perf_counter() - t_fe_start) * 1000, 2)
 
         t_total_ms = round((time.perf_counter() - t_start) * 1000, 2)

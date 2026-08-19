@@ -26,7 +26,12 @@ class GraphRetriever:
         self.temporal_resolver = TemporalResolver()
         self.candidate_retriever = CandidateRetriever(self.hydra)
 
-    async def retrieve_candidates(self, intent: QueryIntent) -> Tuple[List[Fact], Optional[str]]:
+    async def retrieve_candidates(
+        self,
+        intent: QueryIntent,
+        candidates: Optional[List[Any]] = None,
+        **query_kwargs: Any,
+    ) -> Tuple[List[Fact], Optional[str]]:
         """Fetch candidate facts and revision explanation based on query intent.
         
         Returns:
@@ -69,8 +74,11 @@ class GraphRetriever:
                     return [], f"No memory record found for session '{intent.session_id}'."
                 return [], "Missing target session ID."
 
-        # 2. Retrieve Candidate Messages
-        candidates = await self.candidate_retriever.retrieve_candidate_messages_async(intent, top_k=20)
+        # 2. Retrieve Candidate Messages if not already provided
+        if candidates is None:
+            candidates = await self.candidate_retriever.retrieve_candidate_messages_async(
+                intent, top_k=20, **query_kwargs
+            )
         if not candidates:
             return [], f"No relevant message candidates found for concepts: {intent.concepts}."
 

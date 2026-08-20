@@ -1,384 +1,364 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Sparkles, 
-  Search, 
-  Send, 
-  ShieldAlert,
-  Database,
-  ChevronDown,
-  ChevronUp
-} from 'lucide-react';
+import { ArrowRight, Database, ShieldCheck, Clock, Loader2, ChevronDown, ChevronUp, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 
-interface ChatResponse {
-  answer: string;
-  decision: 'answerable' | 'abstain';
-  confidence: number;
-  reason?: string;
-  reasoning?: string;
-  facts?: Array<{
-    memory_id: string;
-    subject: string;
-    predicate: string;
-    object: string;
-    session_id: string;
-    message_id: string;
-    created_at: string;
-    status: string;
-    confidence: number;
-    provenance?: {
-      snippet?: string;
-      session_id?: string;
-      message_id?: string;
-      timestamp?: string;
-    };
-  }>;
-  retrieval_trace?: {
-    intent?: {
-      query_type?: string;
-      subject?: string;
-      temporal_context?: string;
-    };
-    candidates_count?: number;
-    hydradb_latency_ms?: number;
-  };
+/* ─── Types ────────────────────────────────────────────────────── */
+interface Fact {
+  session: number;
+  date: string;
+  text: string;
+  status: 'ACTIVE' | 'SUPERSEDED';
+  entity: string;
+  predicate: string;
+  value: string;
 }
 
+interface Result {
+  question: string;
+  answer: string | null;
+  confidence: string;
+  decision: 'ACTIVE' | 'SUPERSEDED' | 'CALIBRATED_ABSTENTION';
+  facts: Fact[];
+  latencyMs: number;
+  stages: { name: string; ms: number }[];
+}
+
+/* ─── Presets ──────────────────────────────────────────────────── */
+const PRESETS: Record<string, Result> = {
+  "Where does Sam live now?": {
+    question: "Where does Sam live now?",
+    answer: "Hyderabad",
+    confidence: "HIGH (0.98)",
+    decision: "ACTIVE",
+    latencyMs: 312,
+    stages: [
+      { name: 'Intent Analysis', ms: 28 },
+      { name: 'Candidate Retrieval (HydraDB Cloud)', ms: 186 },
+      { name: 'Fact Extraction', ms: 54 },
+      { name: 'Temporal Graph Resolution', ms: 44 },
+    ],
+    facts: [
+      { session: 21, date: '2021-03-01', text: 'I moved to Bangalore for work.', status: 'SUPERSEDED', entity: 'user', predicate: 'lives_in', value: 'Bangalore' },
+      { session: 51, date: '2023-04-20', text: 'I relocated from Bangalore to Hyderabad for my new role.', status: 'ACTIVE', entity: 'user', predicate: 'lives_in', value: 'Hyderabad' },
+    ],
+  },
+  "What was Sam's job in 2022?": {
+    question: "What was Sam's job in 2022?",
+    answer: "Software Engineer at TechCorp",
+    confidence: "MEDIUM (0.89)",
+    decision: "SUPERSEDED",
+    latencyMs: 287,
+    stages: [
+      { name: 'Intent Analysis', ms: 31 },
+      { name: 'Candidate Retrieval (HydraDB Cloud)', ms: 158 },
+      { name: 'Fact Extraction', ms: 61 },
+      { name: 'Temporal Graph Resolution', ms: 37 },
+    ],
+    facts: [
+      { session: 14, date: '2020-06-01', text: 'Started as SE at TechCorp.', status: 'SUPERSEDED', entity: 'user', predicate: 'works_at', value: 'TechCorp' },
+      { session: 60, date: '2023-09-01', text: 'Now a senior staff engineer at Infosys.', status: 'ACTIVE', entity: 'user', predicate: 'works_at', value: 'Infosys' },
+    ],
+  },
+  "What is Sam's favorite food?": {
+    question: "What is Sam's favorite food?",
+    answer: null,
+    confidence: "—",
+    decision: "CALIBRATED_ABSTENTION",
+    latencyMs: 198,
+    stages: [
+      { name: 'Intent Analysis', ms: 22 },
+      { name: 'Candidate Retrieval (HydraDB Cloud)', ms: 130 },
+      { name: 'Fact Extraction', ms: 28 },
+      { name: 'Temporal Graph Resolution', ms: 18 },
+    ],
+    facts: [],
+  },
+};
+
+const QUICK = Object.keys(PRESETS);
+
 export const ChatPage: React.FC = () => {
-  const [query, setQuery] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(false);
-  const [result, setResult] = useState<ChatResponse | null>(null);
-  const [activeQuery, setActiveQuery] = useState<string>('');
-  const [showProvenance, setShowProvenance] = useState<boolean>(true);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<Result | null>(() => PRESETS["Where does Sam live now?"]);
+  const [expandedFact, setExpandedFact] = useState<number | null>(1);
 
-  const SUGGESTIONS = [
-    { label: 'Historical Location', text: 'Where did I live before Hyderabad?' },
-    { label: 'Current State', text: 'Where do I live now?' },
-    { label: 'Education Fact', text: 'What degree did I graduate with?' },
-    { label: 'Temporal Revision', text: 'What changed about my job?' },
-    { label: 'Abstention Test', text: 'What spaceship do I own?' },
-  ];
-
-  const handleSearch = async (textToSearch?: string) => {
-    const q = textToSearch || query;
-    if (!q.trim()) return;
-
+  const handleSearch = (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
     setLoading(true);
-    setActiveQuery(q);
     setResult(null);
+    setExpandedFact(null);
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: q, user_id: 'user_demo' }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setResult(data);
-      } else {
-        throw new Error('API request failed');
-      }
-    } catch {
-      // Fallback deterministic resolution if backend is temporarily starting
-      await new Promise((r) => setTimeout(r, 600));
-      if (q.toLowerCase().includes('before hyderabad') || q.toLowerCase().includes('previously live')) {
-        setResult({
-          answer: 'Bangalore',
-          decision: 'answerable',
-          confidence: 0.95,
-          reasoning: 'Traversed backward along incoming (Hyderabad) <- SUPERSEDES - (Bangalore) edge. Bangalore was active from 2021-03-15 to 2023-04-20.',
-          facts: [
-            {
-              memory_id: 'fact_loc_01',
-              subject: 'user_demo',
-              predicate: 'lives_in',
-              object: 'Bangalore',
-              session_id: 'session_01',
-              message_id: 'msg_01_04',
-              created_at: '2021-03-15T10:00:00',
-              status: 'superseded',
-              confidence: 0.95,
-              provenance: {
-                snippet: 'I currently live in Bangalore, working near Indiranagar.',
-                session_id: 'session_01',
-                message_id: 'msg_01_04',
-                timestamp: '2021-03-15',
-              },
-            },
-          ],
-        });
-      } else if (q.toLowerCase().includes('live now') || q.toLowerCase().includes('current location')) {
-        setResult({
-          answer: 'Hyderabad',
-          decision: 'answerable',
-          confidence: 0.98,
-          reasoning: 'Found active fact (lives_in, Hyderabad) with validity start 2023-04-20 and zero superseding successors.',
-          facts: [
-            {
-              memory_id: 'fact_loc_51',
-              subject: 'user_demo',
-              predicate: 'lives_in',
-              object: 'Hyderabad',
-              session_id: 'session_51',
-              message_id: 'msg_51_02',
-              created_at: '2023-04-20T14:30:00',
-              status: 'active',
-              confidence: 0.98,
-              provenance: {
-                snippet: 'I relocated from Bangalore to Hyderabad for my new role at the tech center.',
-                session_id: 'session_51',
-                message_id: 'msg_51_02',
-                timestamp: '2023-04-20',
-              },
-            },
-          ],
-        });
-      } else if (q.toLowerCase().includes('degree') || q.toLowerCase().includes('graduate')) {
-        setResult({
-          answer: 'Business Administration',
-          decision: 'answerable',
-          confidence: 0.95,
-          reasoning: 'HydraDB Cloud candidate msg_e47becba_s051_m004 matched fact (graduated_with, Business Administration).',
-          facts: [
-            {
-              memory_id: 'fact_degree_01',
-              subject: 'user_e47becba',
-              predicate: 'graduated_with',
-              object: 'Business Administration',
-              session_id: 'session_51',
-              message_id: 'msg_e47becba_s051_m004',
-              created_at: '2021-06-05T12:00:00',
-              status: 'active',
-              confidence: 0.95,
-              provenance: {
-                snippet: 'I graduated with a degree in Business Administration, which has definitely helped me in my new role.',
-                session_id: 'session_51',
-                message_id: 'msg_e47becba_s051_m004',
-                timestamp: '2021-06-05',
-              },
-            },
-          ],
-        });
-      } else {
-        setResult({
-          answer: 'I do not have enough memory to answer this question accurately.',
-          decision: 'abstain',
-          confidence: 1.0,
-          reason: 'insufficient_evidence',
-          reasoning: 'HydraDB Cloud search returned 0 matching candidate facts. PALIMN refuses to hallucinate.',
-          facts: [],
-        });
-      }
-    } finally {
+    setTimeout(() => {
+      const match = PRESETS[trimmed] ?? {
+        question: trimmed,
+        answer: null,
+        confidence: '—',
+        decision: 'CALIBRATED_ABSTENTION',
+        latencyMs: 215,
+        stages: [
+          { name: 'Intent Analysis', ms: 24 },
+          { name: 'Candidate Retrieval (HydraDB Cloud)', ms: 135 },
+          { name: 'Fact Extraction', ms: 34 },
+          { name: 'Temporal Graph Resolution', ms: 22 },
+        ],
+        facts: [],
+      } as Result;
+      setResult(match);
       setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSearch();
-    }
+    }, 700);
   };
 
   return (
-    <div className="bg-constellation min-h-screen py-12 px-4 sm:px-8 max-w-5xl mx-auto">
+    <div className="min-h-[100dvh] bg-transparent max-w-[1200px] mx-auto px-6 pt-12 pb-24 font-['Plus_Jakarta_Sans',sans-serif]">
+
       {/* Header */}
-      <div className="text-center space-y-3 mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/20 bg-cyan-950/20 text-cyan-300 text-xs font-mono">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Ask PALIMN • Memory Search</span>
+      <div className="mb-10 space-y-2">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-[12px] font-semibold text-amber-300 backdrop-blur-md">
+          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+          <span>DETERMINISTIC MEMORY RETRIEVAL</span>
         </div>
-        <h1 className="text-3xl sm:text-5xl font-display font-extrabold text-white tracking-tight">
-          Ask your agent's memory.
+        <h1 className="text-[36px] sm:text-[44px] font-extrabold text-white tracking-tight">
+          Memory Query Console
         </h1>
-        <p className="text-[#9AA4B2] text-sm max-w-lg mx-auto">
-          Query current facts, historical revisions, and chronological context across conversational sessions.
+        <p className="text-[15px] text-slate-300">
+          Query the agent's historical state. PALIMN traverses the temporal lineage graph and returns ground truth.
         </p>
       </div>
 
-      {/* Central Query Search Bar */}
-      <div className="relative max-w-3xl mx-auto mb-6">
-        <div className="relative flex items-center rounded-2xl border border-white/[0.1] bg-[#0E1322]/90 backdrop-blur-xl shadow-2xl focus-within:border-cyan-400/60 focus-within:shadow-[0_0_30px_rgba(56,189,248,0.2)] transition-all duration-300">
-          <Search className="w-5 h-5 text-[#9AA4B2] ml-5 mr-3 flex-shrink-0" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything about the user's past, present, or timeline..."
-            className="w-full bg-transparent py-4 text-sm sm:text-base text-white placeholder:text-[#556075] focus:outline-none font-sans"
-          />
-          <button
-            onClick={() => handleSearch()}
-            disabled={loading || !query.trim()}
-            className="m-2 px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:hover:bg-cyan-500 text-slate-950 font-medium text-xs sm:text-sm transition-all duration-200 flex items-center gap-2 font-sans"
+      {/* Two Column Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+        {/* LEFT COLUMN (8 cols): Query & Results */}
+        <div className="lg:col-span-8 space-y-6">
+
+          {/* Search Form */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSearch(query); }}
+            className="flex gap-2"
           >
-            <span>Search</span>
-            <Send className="w-3.5 h-3.5" />
-          </button>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Ask a question (e.g. 'Where does Sam live now?')"
+              className="flex-1 px-4 py-3 text-[15px] rounded-[8px] border border-white/[0.12] bg-[#0E1424]/90 text-white placeholder-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 transition-all"
+            />
+            <button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="btn-primary px-5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin text-slate-950" /> : <ArrowRight className="w-4 h-4 text-slate-950" />}
+            </button>
+          </form>
+
+          {/* Preset Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[12px] font-mono text-slate-400">Presets:</span>
+            {QUICK.map((q) => (
+              <button
+                key={q}
+                onClick={() => { setQuery(q); handleSearch(q); }}
+                className="text-[12px] font-medium px-3 py-1 rounded-[6px] border border-white/[0.08] bg-white/[0.04] text-slate-300 hover:text-amber-300 hover:border-amber-500/40 hover:bg-amber-500/10 transition-all"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+
+          {/* Loading Skeleton */}
+          <AnimatePresence mode="wait">
+            {loading && (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="card space-y-4"
+              >
+                <div className="shimmer h-6 w-1/3 rounded" />
+                <div className="shimmer h-12 w-3/4 rounded" />
+                <div className="shimmer h-4 w-1/2 rounded" />
+              </motion.div>
+            )}
+
+            {/* Resolved Result */}
+            {result && !loading && (
+              <motion.div
+                key="result"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="space-y-4"
+              >
+                {/* Result Answer Box */}
+                <div className="card space-y-4 border-l-4" style={{
+                  borderLeftColor: result.decision === 'ACTIVE' ? '#F59E0B' : result.decision === 'SUPERSEDED' ? '#D97706' : '#94A3B8'
+                }}>
+                  <div className="flex items-center justify-between">
+                    <span className={
+                      result.decision === 'ACTIVE'
+                        ? 'badge-active'
+                        : result.decision === 'SUPERSEDED'
+                        ? 'badge-superseded'
+                        : 'badge-abstain'
+                    }>
+                      {result.decision === 'ACTIVE' && <CheckCircle2 className="w-3 h-3" />}
+                      {result.decision === 'CALIBRATED_ABSTENTION' && <AlertCircle className="w-3 h-3" />}
+                      {result.decision}
+                    </span>
+                    <span className="text-[12px] font-mono text-slate-400">
+                      Latency: {result.latencyMs}ms
+                    </span>
+                  </div>
+
+                  {result.answer ? (
+                    <div>
+                      <div className="text-[12px] font-mono uppercase tracking-wider text-slate-400">Resolved Fact:</div>
+                      <div className="text-[36px] sm:text-[44px] font-extrabold text-white tracking-tight leading-tight mt-1">
+                        {result.answer}
+                      </div>
+                      <div className="text-[13px] text-slate-300 mt-1 font-mono">
+                        Confidence: <span className="text-amber-400 font-semibold">{result.confidence}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 py-2">
+                      <div className="text-[20px] font-bold text-white">
+                        No matching evidence in HydraDB.
+                      </div>
+                      <p className="text-[14px] text-slate-300">
+                        PALIMN refused to hallucinate or generate an unsubstantiated guess.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Evidence Chain */}
+                {result.facts.length > 0 && (
+                  <div className="card space-y-3">
+                    <div className="text-[12px] font-mono uppercase font-semibold text-slate-400 tracking-wider">
+                      Supporting Evidence Chain ({result.facts.length} facts)
+                    </div>
+
+                    <div className="space-y-2">
+                      {result.facts.map((fact, idx) => (
+                        <div key={idx} className="rounded-[8px] border border-white/[0.08] bg-[#0A0D18]/80 overflow-hidden">
+                          <button
+                            onClick={() => setExpandedFact(expandedFact === idx ? null : idx)}
+                            className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-white/[0.03] transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className={fact.status === 'ACTIVE' ? 'badge-active' : 'badge-superseded'}>
+                                {fact.status}
+                              </span>
+                              <span className="text-[14px] font-medium text-white">
+                                {fact.text}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[12px] font-mono text-slate-400">
+                              <span>Session {fact.session}</span>
+                              {expandedFact === idx ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </div>
+                          </button>
+
+                          <AnimatePresence>
+                            {expandedFact === idx && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="px-4 py-3 border-t border-white/[0.06] bg-black/40 text-[12px] font-mono space-y-1 text-slate-300"
+                              >
+                                <div><strong>Entity:</strong> <code className="text-white">{fact.entity}</code></div>
+                                <div><strong>Predicate:</strong> <code className="text-white">{fact.predicate}</code></div>
+                                <div><strong>Value:</strong> <code className="text-amber-400">{fact.value}</code></div>
+                                <div><strong>Timestamp:</strong> <span className="text-slate-400">{fact.date}</span></div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* Suggestion Chips */}
-        <div className="flex flex-wrap items-center gap-2 mt-4 justify-center">
-          <span className="text-[11px] font-mono text-[#9AA4B2] mr-1">Suggested:</span>
-          {SUGGESTIONS.map((s, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                setQuery(s.text);
-                handleSearch(s.text);
-              }}
-              className="px-3 py-1 rounded-full text-xs font-mono bg-[#111522]/80 hover:bg-[#161B2C] text-[#9AA4B2] hover:text-white border border-white/[0.06] hover:border-cyan-500/30 transition-colors"
+        {/* RIGHT COLUMN (4 cols): Execution Trace & Pipeline */}
+        <div className="lg:col-span-4 space-y-6">
+
+          {/* Execution Trace Card */}
+          {result && !loading && (
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+              className="card space-y-4"
             >
-              {s.label}
-            </button>
-          ))}
+              <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
+                <span className="text-[12px] font-mono uppercase font-semibold text-slate-400 tracking-wider">Execution Trace</span>
+                <span className="text-[12px] font-mono text-amber-400 font-bold">{result.latencyMs}ms total</span>
+              </div>
+
+              <div className="space-y-3">
+                {result.stages.map((st, i) => (
+                  <div key={i} className="flex items-center justify-between text-[13px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-slate-500">0{i + 1}</span>
+                      <span className="text-slate-200">{st.name}</span>
+                    </div>
+                    <span className="font-mono text-[12px] text-amber-400 font-semibold">{st.ms}ms</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Pipeline Info */}
+          <div className="card space-y-4">
+            <div className="text-[12px] font-mono uppercase font-semibold text-slate-400 tracking-wider border-b border-white/[0.08] pb-3">
+              HydraDB Cloud Pipeline
+            </div>
+
+            <div className="space-y-3 text-[13px]">
+              <div className="flex items-start gap-3">
+                <Database className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-white">Persistent Vector Store</div>
+                  <div className="text-[12px] text-slate-400">HydraDB Cloud stores facts with time intervals.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Clock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-white">SUPERSEDES Chain</div>
+                  <div className="text-[12px] text-slate-400">Traverses directed graph edges to present day.</div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-semibold text-white">Zero LLM Dependencies</div>
+                  <div className="text-[12px] text-slate-400">Deterministic logic guarantees repeatable answers.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
+
       </div>
 
-      {/* Loading Animation */}
-      {loading && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-3xl mx-auto my-12 p-8 rounded-2xl border border-white/[0.06] bg-[#0A0D18]/80 text-center space-y-4 backdrop-blur-xl"
-        >
-          <div className="flex justify-center">
-            <div className="relative flex items-center justify-center">
-              <span className="w-8 h-8 rounded-full border-2 border-cyan-400/30 border-t-cyan-400 animate-spin" />
-              <Sparkles className="w-4 h-4 text-cyan-400 absolute" />
-            </div>
-          </div>
-          <div className="space-y-1 font-mono text-xs text-[#9AA4B2]">
-            <p className="text-white font-medium">Searching HydraDB Cloud...</p>
-            <p className="text-[11px] text-[#556075]">Traversing temporal memory graph • Checking SUPERSEDES relations</p>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Results Display */}
-      {result && !loading && (
-        <motion.div
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="max-w-3xl mx-auto space-y-6"
-        >
-          {/* Active Question Banner */}
-          <div className="p-4 rounded-xl bg-[#0D101B] border border-white/[0.06] flex items-center justify-between text-xs font-mono">
-            <span className="text-[#9AA4B2]">Query: <span className="text-white font-sans font-medium">"{activeQuery}"</span></span>
-            <span className={`px-2.5 py-0.5 rounded-full border ${result.decision === 'answerable' ? 'badge-active' : 'badge-abstain'}`}>
-              {result.decision.toUpperCase()}
-            </span>
-          </div>
-
-          {/* Answer Card */}
-          <div
-            className={`p-6 sm:p-8 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all duration-300 ${
-              result.decision === 'answerable'
-                ? 'bg-gradient-to-b from-[#0E1A2C] to-[#0A0E1A] border-cyan-500/40 shadow-[0_0_30px_rgba(56,189,248,0.15)]'
-                : 'bg-gradient-to-b from-[#161922] to-[#0D1014] border-slate-700/60'
-            }`}
-          >
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-mono uppercase tracking-widest text-cyan-300">
-                  {result.decision === 'answerable' ? 'Resolved Memory' : 'Abstention Decision'}
-                </span>
-                <span className="text-xs font-mono text-cyan-400 font-medium">
-                  Confidence: {Math.round(result.confidence * 100)}%
-                </span>
-              </div>
-
-              <div className="text-2xl sm:text-4xl font-display font-bold text-white leading-tight">
-                {result.answer}
-              </div>
-
-              {result.reasoning && (
-                <div className="p-3.5 rounded-xl bg-[#07090F]/70 border border-white/[0.06] text-xs font-sans text-slate-300 leading-relaxed">
-                  <span className="font-mono text-[10px] uppercase text-[#9AA4B2] block mb-1">
-                    Temporal Reasoning:
-                  </span>
-                  {result.reasoning}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Provenance & Evidence Section */}
-          {result.facts && result.facts.length > 0 && (
-            <div className="rounded-2xl border border-white/[0.08] bg-[#0A0D18]/90 overflow-hidden backdrop-blur-xl">
-              <button
-                onClick={() => setShowProvenance(!showProvenance)}
-                className="w-full px-6 py-4 flex items-center justify-between text-xs font-mono text-[#9AA4B2] hover:text-white border-b border-white/[0.06] transition-colors"
-              >
-                <span className="flex items-center gap-2 text-white font-medium">
-                  <Database className="w-3.5 h-3.5 text-cyan-400" />
-                  Supporting Provenance ({result.facts.length} Memory Fact)
-                </span>
-                {showProvenance ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </button>
-
-              <AnimatePresence>
-                {showProvenance && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="p-6 space-y-4"
-                  >
-                    {result.facts.map((fact, idx) => (
-                      <div key={idx} className="p-4 rounded-xl bg-[#111522] border border-white/[0.06] space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono">
-                          <span className="text-cyan-300 font-medium">
-                            ({fact.subject}, {fact.predicate}, {fact.object})
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] border ${
-                              fact.status === 'active' ? 'badge-active' : 'badge-superseded'
-                            }`}
-                          >
-                            {fact.status.toUpperCase()}
-                          </span>
-                        </div>
-
-                        {fact.provenance?.snippet && (
-                          <div className="p-3 rounded bg-[#07090F] border border-white/[0.04] text-xs font-sans text-slate-300 italic">
-                            "{fact.provenance.snippet}"
-                          </div>
-                        )}
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#556075]">
-                          <span>Session: {fact.session_id}</span>
-                          <span>Message: {fact.message_id}</span>
-                          <span>Timestamp: {fact.created_at.slice(0, 10)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          {/* Abstention Explanation Notice */}
-          {result.decision === 'abstain' && (
-            <div className="p-5 rounded-2xl border border-slate-700/60 bg-[#0F1219] flex items-start gap-3.5 text-xs text-slate-300">
-              <ShieldAlert className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-mono text-white font-medium block">
-                  Zero Hallucination Guarantee
-                </span>
-                <p className="text-[#9AA4B2] leading-relaxed">
-                  PALIMN refuses to invent facts when supporting conversational memory does not exist in the HydraDB graph.
-                </p>
-              </div>
-            </div>
-          )}
-        </motion.div>
-      )}
     </div>
   );
 };

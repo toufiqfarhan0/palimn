@@ -1,126 +1,116 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { Sparkles, Network, Activity, Layers, ArrowUpRight, Menu, X } from 'lucide-react';
+import { Menu, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PalimnLogo } from './PalimnLogo';
-import { HealthBadge } from './HealthBadge';
+
+const NAV = [
+  { to: '/chat',         label: 'Console'      },
+  { to: '/graph',        label: 'Graph'        },
+  { to: '/benchmark',    label: 'Benchmark'    },
+  { to: '/architecture', label: 'Architecture' },
+];
 
 export const Navbar: React.FC = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobile, setMobile] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
 
-  const navItems = [
-    { to: '/chat', label: 'Memory', icon: Sparkles },
-    { to: '/graph', label: 'Graph', icon: Network },
-    { to: '/benchmark', label: 'Benchmark', icon: Activity },
-    { to: '/architecture', label: 'Architecture', icon: Layers },
-  ];
+  useEffect(() => { setMobile(false); }, [location]);
+
+  useEffect(() => {
+    const fn = () => setScrolled(window.scrollY > 16);
+    window.addEventListener('scroll', fn, { passive: true });
+    return () => window.removeEventListener('scroll', fn);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-50 w-full px-4 sm:px-8 py-3.5 bg-[#07080D]/80 backdrop-blur-xl border-b border-white/[0.06] transition-all duration-300">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        {/* Brand Logo */}
-        <Link to="/" className="flex items-center gap-3">
-          <PalimnLogo size="md" />
-        </Link>
-
-        {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-1.5 p-1 rounded-full bg-[#111522]/80 border border-white/[0.07] backdrop-blur-md shadow-inner" aria-label="Main Navigation">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = location.pathname === item.to;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'text-white'
-                    : 'text-[#9AA4B2] hover:text-white hover:bg-white/[0.04]'
-                }`}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="activeNavIndicator"
-                    className="absolute inset-0 rounded-full bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 shadow-[0_0_12px_rgba(56,189,248,0.15)]"
-                    transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-                  />
-                )}
-                <Icon className={`w-3.5 h-3.5 relative z-10 ${isActive ? 'text-cyan-400' : 'opacity-70'}`} />
-                <span className="relative z-10">{item.label}</span>
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        {/* Status Badge & CTA Button */}
-        <div className="hidden lg:flex items-center gap-4">
-          <HealthBadge />
-          <Link
-            to="/chat"
-            className="group relative inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-cyan-500/90 to-blue-600/90 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-medium shadow-[0_0_20px_rgba(56,189,248,0.25)] hover:shadow-[0_0_25px_rgba(56,189,248,0.4)] transition-all duration-300 font-sans"
-          >
-            <span>Ask PALIMN</span>
-            <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </Link>
-        </div>
-
-        {/* Mobile Hamburger Toggle */}
-        <div className="flex md:hidden items-center gap-3">
-          <HealthBadge />
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-1.5 rounded-lg border border-slate-800 bg-[#111522] text-slate-300 hover:text-white"
-            aria-label="Toggle Navigation Menu"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+    <>
+      {/* ── Announcement strip ─────────────────────────────────── */}
+      <div className="w-full bg-gradient-to-r from-amber-600/90 via-amber-500/90 to-blue-600/90 px-4 py-1.5 flex items-center justify-center gap-3 text-white">
+        <span className="text-[11px] font-semibold tracking-wide font-['Plus_Jakarta_Sans',sans-serif] flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-amber-200" />
+          <span>HackHydra Track 3 · 96.60% Recall@20 on LongMemEval_S · 0 LLM Hallucinations</span>
+        </span>
       </div>
 
-      {/* Mobile Drawer */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="md:hidden pt-4 pb-2 border-t border-white/[0.06] mt-3"
-          >
-            <div className="flex flex-col gap-1.5">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.to;
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-medium transition-colors ${
-                      isActive
-                        ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
-                        : 'text-[#9AA4B2] hover:bg-white/[0.04] hover:text-white'
-                    }`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-              <div className="pt-2">
-                <Link
-                  to="/chat"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 text-xs font-medium font-sans"
-                >
-                  <span>Ask PALIMN</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
+      {/* ── Main nav ──────────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-50 w-full transition-all duration-200 border-b border-white/[0.08] bg-[#07090E]/80 backdrop-blur-xl"
+        style={{
+          boxShadow: scrolled ? '0 4px 30px rgba(0, 0, 0, 0.5)' : 'none',
+        }}
+      >
+        <div
+          className="max-w-[1200px] mx-auto px-6 h-[60px] flex items-center justify-between"
+        >
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2" aria-label="PALIMN home">
+            <PalimnLogo size="md" />
+          </Link>
+
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+            {NAV.map(({ to, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `px-4 py-1.5 rounded-[6px] text-[14px] font-medium transition-all ${
+                    isActive
+                      ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-white/[0.05]'
+                  }`
+                }
+              >
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+
+          {/* Right Controls */}
+          <div className="flex items-center gap-3">
+            {/* Live Indicator */}
+            <div className="hidden sm:flex items-center gap-2 text-[12px] text-slate-400 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-live text-emerald-400" />
+              HydraDB Live
             </div>
+
+            {/* Mobile menu toggle */}
+            <button
+              className="md:hidden p-2 text-slate-400 hover:text-white transition-colors"
+              onClick={() => setMobile(v => !v)}
+              aria-label="Toggle mobile menu"
+            >
+              {mobile ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Mobile menu ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {mobile && (
+          <motion.div
+            className="fixed inset-0 z-40 flex flex-col pt-[120px] px-6 bg-[#07090E]/95 backdrop-blur-2xl md:hidden"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          >
+            <nav className="flex flex-col gap-1.5">
+              {NAV.map(({ to, label }) => (
+                <NavLink key={to} to={to}
+                  className={({ isActive }) =>
+                    `px-4 py-3.5 rounded-[8px] text-[15px] font-medium transition-colors ${
+                      isActive ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' : 'text-slate-300 hover:text-white'
+                    }`
+                  }
+                >
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
           </motion.div>
         )}
       </AnimatePresence>
-    </header>
+    </>
   );
 };

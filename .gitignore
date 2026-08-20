@@ -78,3 +78,16 @@ temp_datasets/
 *.jsonl
 benchmark_*.json
 .smoke_test_ids.txt
+
+# Markdown files (ignore all except README)
+*.md
+**/*.md
+!README.md
+!readme.md
+!ReadMe.md
+!README.MD
+!**/README.md
+!**/readme.md
+!**/ReadMe.md
+!**/README.MD
+

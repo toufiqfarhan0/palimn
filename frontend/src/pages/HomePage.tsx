@@ -1,467 +1,313 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  ArrowRight, 
-  Calendar,
-  Clock, 
-  Database, 
-  GitFork, 
-  ShieldCheck, 
+import {
+  ArrowRight,
+  Database,
+  GitFork,
+  ShieldCheck,
+  Zap,
   CheckCircle2,
-  Search
+  ChevronRight,
+  Sparkles,
 } from 'lucide-react';
-import { HeroConstellation } from '../components/HeroConstellation';
+import { TimeMachineScrubber } from '../components/TimeMachineScrubber';
+
+/* ─── Scroll-reveal helper ───────────────────────────────────────── */
+const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: string }> = ({
+  children, delay = 0, className = '',
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, amount: 0.15 }}
+    transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+    className={className}
+  >
+    {children}
+  </motion.div>
+);
+
+/* ─── Live counter ────────────────────────────────────────────────── */
+const Counter: React.FC<{ to: number; suffix?: string; decimals?: number }> = ({
+  to, suffix = '', decimals = 0,
+}) => {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let frame: number;
+    const start = performance.now();
+    const dur = 1400;
+    const run = (now: number) => {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 4);
+      setVal(parseFloat((eased * to).toFixed(decimals)));
+      if (p < 1) frame = requestAnimationFrame(run);
+    };
+    const ob = new IntersectionObserver(([e]) => {
+      if (e.isIntersecting) { frame = requestAnimationFrame(run); ob.disconnect(); }
+    });
+    const el = document.getElementById('counter-trigger');
+    if (el) ob.observe(el);
+    return () => { cancelAnimationFrame(frame); ob.disconnect(); };
+  }, [to, decimals]);
+  return <span>{decimals > 0 ? val.toFixed(decimals) : val}{suffix}</span>;
+};
+
+/* ─── Stats ──────────────────────────────────────────────────────── */
+const STATS = [
+  { label: 'Recall@20 on LongMemEval_S', value: 96.60, suffix: '%', decimals: 2, highlight: true },
+  { label: 'Recall@5 Precision',         value: 91.60, suffix: '%', decimals: 2, highlight: false },
+  { label: 'Benchmark Questions Tested',  value: 500,   suffix: '',  decimals: 0, highlight: false },
+  { label: 'LLM Inference Dependencies',  value: 0,     suffix: '',  decimals: 0, highlight: false },
+];
+
+/* ─── Pipeline stages ────────────────────────────────────────────── */
+const STAGES = [
+  { id: '01', title: 'Intent Analyzer', desc: 'Parses entity, predicate, and temporal anchors from natural language queries.' },
+  { id: '02', title: 'Candidate Retrieval', desc: 'Queries HydraDB Cloud for ranked vector candidates matching entity relationships.' },
+  { id: '03', title: 'Fact Extraction', desc: 'Structures candidates into temporal tuples with valid_from and valid_to intervals.' },
+  { id: '04', title: 'Temporal Resolution', desc: 'Traverses the SUPERSEDES graph to resolve active truth or execute calibrated abstention.' },
+];
 
 export const HomePage: React.FC = () => {
-  // Temporal Transition state
-  const [temporalStep, setTemporalStep] = useState<'both' | 'session01' | 'session51'>('both');
-
-  // Interactive Memory Explorer state
-  const [activeQueryIndex, setActiveQueryIndex] = useState<number>(0);
-
-  const EXPLORER_QUERIES = [
-    {
-      question: "Where do I live now?",
-      type: "Current State",
-      step1: "Extract entity 'user' + predicate 'lives_in' with current temporal context (present).",
-      step2: "HydraDB Cloud retrieved 2 candidate location facts from sessions 01 and 51.",
-      step3: "TemporalResolver found Hyderabad is ACTIVE (valid_from: 2023-04-20, superseded_by: None).",
-      answer: "Hyderabad",
-      status: "ACTIVE",
-      statusColor: "emerald",
-      confidence: "98%",
-      evidence: "Session 51: 'I relocated from Bangalore to Hyderabad for my new role.'",
-    },
-    {
-      question: "Where did I live before Hyderabad?",
-      type: "Historical State",
-      step1: "Detected temporal revision modifier 'before Hyderabad' -> backward lineage traversal.",
-      step2: "Traversed backwards along incoming (Hyderabad) <- SUPERSEDES - (Bangalore) edge.",
-      step3: "Resolved historical fact Bangalore (valid_from: 2021-03-15, valid_until: 2023-04-20).",
-      answer: "Bangalore",
-      status: "SUPERSEDED",
-      statusColor: "amber",
-      confidence: "95%",
-      evidence: "Session 01: 'I currently live in Bangalore, working near Indiranagar.'",
-    },
-    {
-      question: "What degree did I graduate with?",
-      type: "Knowledge Fact",
-      step1: "Intent extraction: entity 'user' + predicate 'graduated_with' + object wildcard.",
-      step2: "HydraDB Cloud candidate match found msg_e47becba_s051_m004 (score: 37.50).",
-      step3: "Temporal resolver confirmed stable fact with zero contradicting revisions.",
-      answer: "Business Administration",
-      status: "ACTIVE",
-      statusColor: "cyan",
-      confidence: "95%",
-      evidence: "Session 51: 'I graduated with a degree in Business Administration...'",
-    },
-    {
-      question: "What spaceship does the user own?",
-      type: "Abstention",
-      step1: "Query analysis parsed subject 'user' + object 'spaceship'.",
-      step2: "HydraDB Cloud query returned 0 matching candidate memories or facts.",
-      step3: "Abstention engine triggered: INSUFFICIENT_EVIDENCE (0 hallucinations allowed).",
-      answer: "I do not have any record of you owning a spaceship.",
-      status: "ABSTAIN",
-      statusColor: "slate",
-      confidence: "100%",
-      evidence: "0 supporting facts found across 500 session memory nodes.",
-    },
-  ];
-
   return (
-    <div className="bg-constellation min-h-screen pb-24 text-[#F4F7FB]">
-      {/* ------------------------------------------------------------- */}
-      {/* 1. HERO SECTION */}
-      {/* ------------------------------------------------------------- */}
-      <section className="relative pt-16 sm:pt-24 pb-16 px-4 sm:px-8 max-w-7xl mx-auto">
-        <div className="flex flex-col items-center text-center space-y-6 max-w-4xl mx-auto">
-          {/* Eyebrow badge */}
+    <div className="bg-transparent min-h-screen font-['Plus_Jakarta_Sans',sans-serif]">
+
+      {/* ── HERO SECTION ────────────────────────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-6 pt-16 pb-20 lg:pt-24 lg:pb-28">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+
+          {/* Left Hero Content (7 cols) */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            className="lg:col-span-7 space-y-6"
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-cyan-500/30 bg-[#0E1726]/80 text-xs font-mono text-cyan-300 shadow-[0_0_15px_rgba(56,189,248,0.15)]"
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
-            <span>PALIMN • TEMPORAL GRAPH MEMORY</span>
-          </motion.div>
-
-          {/* Main Editorial Headline */}
-          <motion.h1
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="text-4xl sm:text-6xl lg:text-7xl font-display font-extrabold tracking-tight text-white leading-[1.08]"
-          >
-            Memory that <span className="bg-gradient-to-r from-cyan-400 via-indigo-300 to-amber-300 bg-clip-text text-transparent">remembers.</span>
-          </motion.h1>
-
-          {/* Subtitle Statement */}
-          <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-base sm:text-xl text-[#9AA4B2] max-w-2xl font-sans leading-relaxed"
-          >
-            PALIMN gives AI agents persistent temporal memory across conversations — preserving what changed, what came before, and why.
-          </motion.p>
-
-          {/* Action CTAs */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="flex flex-wrap items-center justify-center gap-4 pt-2"
-          >
-            <Link
-              to="/chat"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium text-sm transition-all duration-300 shadow-[0_0_25px_rgba(56,189,248,0.3)] hover:shadow-[0_0_35px_rgba(56,189,248,0.5)] group"
-            >
-              <span>Ask PALIMN</span>
-              <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-
-            <Link
-              to="/graph"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#111522] hover:bg-[#161B2C] text-white border border-white/[0.08] hover:border-cyan-500/40 font-medium text-sm transition-all duration-300 shadow-sm"
-            >
-              <GitFork className="w-4 h-4 text-cyan-400" />
-              <span>Explore Graph Universe</span>
-            </Link>
-          </motion.div>
-        </div>
-
-        {/* Interactive Constellation Hero Visual */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="mt-12 sm:mt-16"
-        >
-          <HeroConstellation />
-        </motion.div>
-      </section>
-
-      {/* ------------------------------------------------------------- */}
-      {/* 2. THE TEMPORAL TRANSITION STORY (Bangalore -> SUPERSEDES -> Hyderabad) */}
-      {/* ------------------------------------------------------------- */}
-      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto border-t border-white/[0.06]">
-        <div className="text-center max-w-3xl mx-auto space-y-4 mb-12">
-          <span className="text-xs font-mono uppercase tracking-widest text-amber-400">
-            Temporal Lineage
-          </span>
-          <h2 className="text-3xl sm:text-5xl font-display font-bold text-white tracking-tight">
-            Facts change. Memory should adapt.
-          </h2>
-          <p className="text-[#9AA4B2] text-sm sm:text-base leading-relaxed">
-            Most AI vector databases overwrite or hallucinate when facts evolve. PALIMN creates bidirectional <code className="text-amber-300 font-mono text-xs px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-500/30">SUPERSEDES</code> edges, preserving the complete temporal lineage.
-          </p>
-
-          {/* Stepper Selector */}
-          <div className="inline-flex p-1 rounded-full bg-[#111522] border border-white/[0.08] text-xs font-mono">
-            <button
-              onClick={() => setTemporalStep('session01')}
-              className={`px-4 py-1.5 rounded-full transition-colors ${
-                temporalStep === 'session01' ? 'bg-slate-700 text-white' : 'text-[#9AA4B2] hover:text-white'
-              }`}
-            >
-              1. Session 01 (March 2021)
-            </button>
-            <button
-              onClick={() => setTemporalStep('session51')}
-              className={`px-4 py-1.5 rounded-full transition-colors ${
-                temporalStep === 'session51' ? 'bg-cyan-500 text-slate-950 font-medium' : 'text-[#9AA4B2] hover:text-white'
-              }`}
-            >
-              2. Session 51 (April 2023)
-            </button>
-            <button
-              onClick={() => setTemporalStep('both')}
-              className={`px-4 py-1.5 rounded-full transition-colors ${
-                temporalStep === 'both' ? 'bg-amber-500 text-slate-950 font-medium' : 'text-[#9AA4B2] hover:text-white'
-              }`}
-            >
-              Full Lineage
-            </button>
-          </div>
-        </div>
-
-        {/* Visual Temporal Transition Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-5xl mx-auto">
-          {/* Historical Fact (Bangalore) */}
-          <motion.div
-            animate={{
-              opacity: temporalStep === 'session51' ? 0.35 : 1,
-              scale: temporalStep === 'session01' ? 1.02 : 1,
-            }}
-            transition={{ duration: 0.3 }}
-            className={`p-6 rounded-2xl border transition-all duration-300 ${
-              temporalStep === 'session01'
-                ? 'bg-[#121626] border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.15)]'
-                : 'bg-[#0D101A]/80 border-white/[0.08]'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-mono text-[#9AA4B2] flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                Session 01 • 2021-03-15
-              </span>
-              <span className="badge-superseded px-2.5 py-0.5 rounded-full text-[10px] font-mono">
-                HISTORICAL STATE
-              </span>
+            {/* Pill */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[12px] font-semibold text-amber-300 backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>HACKHYDRA TRACK 3 · HYDRADB CLOUD NATIVE</span>
             </div>
 
-            <h3 className="text-xl font-display font-semibold text-white mb-2">
-              "I live in Bangalore."
-            </h3>
-            <p className="text-xs text-[#9AA4B2] mb-4">
-              Indiranagar residence recorded during onboarding.
+            {/* Headline */}
+            <h1 className="text-[44px] sm:text-[56px] lg:text-[64px] font-extrabold text-white leading-[1.05] tracking-tight">
+              Memory that <br className="hidden sm:inline" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-200">
+                never hallucinates.
+              </span>
+            </h1>
+
+            {/* Subtext */}
+            <p className="text-[17px] text-slate-300 leading-relaxed max-w-[540px]">
+              Persistent, time-anchored graph memory for AI agents. Every fact update is tracked with <code className="text-amber-300 bg-amber-950/40 border border-amber-500/30">SUPERSEDES</code> edges, ensuring 100% deterministic temporal resolution with zero LLM inference.
             </p>
 
-            <div className="p-3 rounded-lg bg-[#07090E] border border-white/[0.04] text-xs font-mono space-y-1">
-              <div className="text-slate-400">valid_from: <span className="text-white">2021-03-15</span></div>
-              <div className="text-amber-400">valid_until: <span className="text-amber-300 font-semibold">2023-04-20</span></div>
-              <div className="text-slate-400">status: <span className="text-amber-400">superseded</span></div>
+            {/* CTAs */}
+            <div className="flex flex-wrap items-center gap-3.5 pt-2">
+              <Link to="/chat" className="btn-primary">
+                Launch Memory Console
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+              <Link to="/graph" className="btn-ghost">
+                Inspect Graph Universe
+              </Link>
+            </div>
+
+            {/* Feature badges */}
+            <div className="flex flex-wrap items-center gap-6 pt-4 border-t border-white/[0.08] text-[13px] text-slate-400 font-mono">
+              <span className="flex items-center gap-1.5 text-slate-200 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                96.60% Recall@20
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-blue-400" />
+                HydraDB Cloud
+              </span>
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                0 Hallucinations
+              </span>
             </div>
           </motion.div>
 
-          {/* Active Fact (Hyderabad) */}
+          {/* Right Hero Image Card (5 cols) */}
           <motion.div
-            animate={{
-              opacity: temporalStep === 'session01' ? 0.35 : 1,
-              scale: temporalStep === 'session51' ? 1.02 : 1,
-            }}
-            transition={{ duration: 0.3 }}
-            className={`p-6 rounded-2xl border transition-all duration-300 ${
-              temporalStep === 'session51' || temporalStep === 'both'
-                ? 'bg-[#0E1A2C] border-cyan-400/50 shadow-[0_0_25px_rgba(56,189,248,0.15)]'
-                : 'bg-[#0D101A]/80 border-white/[0.08]'
-            }`}
+            className="lg:col-span-5"
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-xs font-mono text-[#9AA4B2] flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                Session 51 • 2023-04-20
-              </span>
-              <span className="badge-active px-2.5 py-0.5 rounded-full text-[10px] font-mono">
-                ACTIVE STATE
-              </span>
-            </div>
-
-            <h3 className="text-xl font-display font-semibold text-white mb-2">
-              "I moved to Hyderabad."
-            </h3>
-            <p className="text-xs text-[#9AA4B2] mb-4">
-              Relocated for tech center leadership role.
-            </p>
-
-            <div className="p-3 rounded-lg bg-[#07090E] border border-white/[0.04] text-xs font-mono space-y-1">
-              <div className="text-slate-400">valid_from: <span className="text-white">2023-04-20</span></div>
-              <div className="text-emerald-400">valid_until: <span className="text-emerald-300 font-semibold">present</span></div>
-              <div className="text-slate-400">supersedes: <span className="text-amber-400">fact_loc_bangalore</span></div>
+            <div className="rounded-[16px] overflow-hidden border border-white/[0.12] shadow-2xl bg-[#0F1424]/85 backdrop-blur-xl p-2.5">
+              <img
+                src="/hero-light.jpg"
+                alt="PALIMN Knowledge Graph and Memory Query Interface"
+                className="w-full h-auto rounded-[12px] object-cover"
+              />
+              <div className="px-3 py-2.5 flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span>Status: Deterministic Pipeline Active</span>
+                <span className="text-emerald-400 font-semibold">0ms LLM Overhead</span>
+              </div>
             </div>
           </motion.div>
         </div>
       </section>
 
-      {/* ------------------------------------------------------------- */}
-      {/* 3. MEMORY EXPLORER (Interactive Investigation Section) */}
-      {/* ------------------------------------------------------------- */}
-      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto border-t border-white/[0.06]">
-        <div className="text-center max-w-2xl mx-auto space-y-4 mb-12">
-          <span className="text-xs font-mono uppercase tracking-widest text-cyan-400">
-            Interactive Investigation
-          </span>
-          <h2 className="text-3xl sm:text-5xl font-display font-bold text-white tracking-tight">
-            Explore how PALIMN resolves memory.
-          </h2>
-          <p className="text-[#9AA4B2] text-sm sm:text-base">
-            Select a sample query to follow PALIMN's temporal reasoning through the memory graph in real time.
-          </p>
-        </div>
-
-        {/* Query selector tabs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl mx-auto mb-8">
-          {EXPLORER_QUERIES.map((q, idx) => {
-            const isSelected = activeQueryIndex === idx;
-            return (
-              <button
-                key={idx}
-                onClick={() => setActiveQueryIndex(idx)}
-                className={`p-4 rounded-xl text-left border transition-all duration-200 ${
-                  isSelected
-                    ? 'bg-[#111625] border-cyan-400 text-white shadow-[0_0_20px_rgba(56,189,248,0.15)]'
-                    : 'bg-[#0D101B]/70 border-white/[0.06] text-[#9AA4B2] hover:text-white hover:bg-[#111522]'
-                }`}
+      {/* ── STATS STRIP ──────────────────────────────────────────── */}
+      <section id="counter-trigger" className="border-y border-white/[0.08] bg-[#07090E]/80 backdrop-blur-lg">
+        <div className="max-w-[1200px] mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
+          {STATS.map((s) => (
+            <div key={s.label} className="space-y-1">
+              <div
+                className="text-[36px] sm:text-[44px] font-extrabold tracking-tight leading-none"
+                style={{ color: s.highlight ? '#F59E0B' : '#FFFFFF' }}
               >
-                <div className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 mb-1">
-                  {q.type}
-                </div>
-                <div className="text-xs font-medium line-clamp-2">{q.question}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Selected Investigation Pipeline Display */}
-        {(() => {
-          const current = EXPLORER_QUERIES[activeQueryIndex];
-          return (
-            <div className="max-w-5xl mx-auto rounded-2xl border border-white/[0.08] bg-[#0A0D18]/90 p-6 sm:p-8 backdrop-blur-xl shadow-2xl space-y-8">
-              {/* Question Banner */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-white/[0.06]">
-                <div>
-                  <span className="text-[11px] font-mono text-[#9AA4B2] uppercase tracking-wider">
-                    Target Question
-                  </span>
-                  <h3 className="text-xl sm:text-2xl font-display font-bold text-white mt-1">
-                    "{current.question}"
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                  <span className="text-xs font-mono text-[#9AA4B2]">Decision:</span>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-mono font-medium border ${
-                      current.status === 'ACTIVE'
-                        ? 'badge-active'
-                        : current.status === 'SUPERSEDED'
-                        ? 'badge-superseded'
-                        : 'badge-abstain'
-                    }`}
-                  >
-                    {current.status}
-                  </span>
-                </div>
+                <Counter to={s.value} suffix={s.suffix} decimals={s.decimals} />
               </div>
-
-              {/* 3 Step Animated Trace */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-[#111522]/80 border border-white/[0.06] space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-mono text-cyan-400">
-                    <Search className="w-3.5 h-3.5" />
-                    <span>1. Intent Analysis</span>
-                  </div>
-                  <p className="text-xs text-slate-300">{current.step1}</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#111522]/80 border border-white/[0.06] space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-mono text-indigo-400">
-                    <Database className="w-3.5 h-3.5" />
-                    <span>2. HydraDB Cloud Pool</span>
-                  </div>
-                  <p className="text-xs text-slate-300">{current.step2}</p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-[#111522]/80 border border-white/[0.06] space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-mono text-amber-400">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>3. Temporal Resolution</span>
-                  </div>
-                  <p className="text-xs text-slate-300">{current.step3}</p>
-                </div>
-              </div>
-
-              {/* Dominant Answer & Provenance Box */}
-              <div className="p-6 rounded-xl bg-gradient-to-r from-[#0E1A2C] to-[#12162A] border border-cyan-500/30 space-y-4">
-                <div>
-                  <span className="text-[11px] font-mono text-cyan-300 uppercase tracking-widest">
-                    Resolved Answer
-                  </span>
-                  <div className="text-2xl sm:text-3xl font-display font-bold text-white mt-1">
-                    {current.answer}
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono text-[#9AA4B2]">
-                  <span className="text-slate-300 italic">"{current.evidence}"</span>
-                  <span className="text-cyan-400 font-medium">Confidence: {current.confidence}</span>
-                </div>
+              <div className="text-[12px] font-mono text-slate-400 leading-snug">
+                {s.label}
               </div>
             </div>
-          );
-        })()}
-      </section>
-
-      {/* ------------------------------------------------------------- */}
-      {/* 4. PERSISTENT HYDRADB CLOUD FOUNDATION */}
-      {/* ------------------------------------------------------------- */}
-      <section className="py-20 px-4 sm:px-8 max-w-7xl mx-auto border-t border-white/[0.06]">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-5 space-y-6">
-            <span className="text-xs font-mono uppercase tracking-widest text-emerald-400 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" />
-              HydraDB Cloud Storage
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-display font-bold text-white tracking-tight">
-              Persistent memory in the cloud. Zero in-memory loss.
-            </h2>
-            <p className="text-[#9AA4B2] text-sm sm:text-base leading-relaxed">
-              Every user session, candidate message, entity mention, and temporal revision is indexed and remotely stored in the HydraDB Cloud database <code className="text-cyan-300 font-mono text-xs px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-500/30">palimn-memory</code>.
-            </p>
-
-            <ul className="space-y-3 text-xs font-mono text-slate-300">
-              <li className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Fresh-process memory recovery without local cache</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Deterministic temporal graph traversal (SUPERSEDES/PRECEDES)</span>
-              </li>
-              <li className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Zero LLM hallucination in the memory pipeline</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="lg:col-span-7 grid grid-cols-2 gap-4">
-            <div className="p-5 rounded-2xl bg-[#0D101B] border border-white/[0.08] space-y-2">
-              <div className="text-2xl sm:text-3xl font-display font-bold text-white">500 / 500</div>
-              <div className="text-xs text-[#9AA4B2] font-mono">LongMemEval_S Questions</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0D101B] border border-white/[0.08] space-y-2">
-              <div className="text-2xl sm:text-3xl font-display font-bold text-cyan-400">96.60%</div>
-              <div className="text-xs text-[#9AA4B2] font-mono">Recall@20 Candidates</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0D101B] border border-white/[0.08] space-y-2">
-              <div className="text-2xl sm:text-3xl font-display font-bold text-emerald-400">0 LLMs</div>
-              <div className="text-xs text-[#9AA4B2] font-mono">Zero LLM Dependencies</div>
-            </div>
-            <div className="p-5 rounded-2xl bg-[#0D101B] border border-white/[0.08] space-y-2">
-              <div className="text-2xl sm:text-3xl font-display font-bold text-indigo-400">100% Cloud</div>
-              <div className="text-xs text-[#9AA4B2] font-mono">Real Persistent Storage</div>
-            </div>
-          </div>
+          ))}
         </div>
       </section>
 
-      {/* ------------------------------------------------------------- */}
-      {/* 5. BOTTOM CTA BANNER */}
-      {/* ------------------------------------------------------------- */}
-      <section className="pt-12 px-4 sm:px-8 max-w-5xl mx-auto text-center">
-        <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-b from-[#111625] to-[#07080D] border border-white/[0.08] space-y-6 shadow-2xl relative overflow-hidden">
-          <div className="absolute inset-0 bg-radial-glow opacity-50 pointer-events-none" />
-          <h3 className="text-2xl sm:text-4xl font-display font-bold text-white relative z-10">
-            Ready to explore living temporal memory?
-          </h3>
-          <p className="text-[#9AA4B2] text-sm max-w-xl mx-auto relative z-10">
-            Search conversational history, follow fact updates backwards in time, and inspect exact provenance snippets.
+      {/* ── THREE PILLARS (Clean Glass Cards) ────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-6 py-20">
+        <Reveal className="text-center max-w-2xl mx-auto mb-14 space-y-2">
+          <h2 className="text-[32px] sm:text-[40px] font-extrabold text-white tracking-tight">
+            Engineered for Grounded Agent State
+          </h2>
+          <p className="text-[15px] text-slate-300">
+            Why standard RAG fails on temporal facts and how PALIMN resolves it deterministically.
           </p>
-          <div className="pt-2 relative z-10 flex justify-center gap-4">
-            <Link
-              to="/chat"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-medium text-sm transition-all duration-300 shadow-[0_0_25px_rgba(56,189,248,0.3)]"
-            >
-              <span>Launch Memory Console</span>
-              <ArrowRight className="w-4 h-4" />
+        </Reveal>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1 */}
+          <Reveal delay={0.05}>
+            <div className="card h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-10 h-10 rounded-[8px] bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center">
+                  <GitFork className="w-5 h-5" />
+                </div>
+                <h3 className="text-[20px] font-bold text-white tracking-tight">
+                  Temporal Lineage Graph
+                </h3>
+                <p className="text-[14px] text-slate-300 leading-relaxed">
+                  Facts aren't overwritten or merged into vague summaries. Each update creates an explicit <code className="text-amber-300">SUPERSEDES</code> edge, preserving full provenance.
+                </p>
+              </div>
+              <div className="pt-6 mt-6 border-t border-white/[0.08] text-[12px] font-mono text-amber-400 font-semibold">
+                valid_from → valid_to intervals
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Card 2 */}
+          <Reveal delay={0.1}>
+            <div className="card h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-10 h-10 rounded-[8px] bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-[20px] font-bold text-white tracking-tight">
+                  Calibrated Abstention
+                </h3>
+                <p className="text-[14px] text-slate-300 leading-relaxed">
+                  When a queried fact has no historical evidence in HydraDB, PALIMN executes a calibrated refusal instead of confabulating a plausible lie.
+                </p>
+              </div>
+              <div className="pt-6 mt-6 border-t border-white/[0.08] text-[12px] font-mono text-emerald-400 font-semibold">
+                0 false positives emitted
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Card 3 */}
+          <Reveal delay={0.15}>
+            <div className="card h-full flex flex-col justify-between">
+              <div className="space-y-4">
+                <div className="w-10 h-10 rounded-[8px] bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <h3 className="text-[20px] font-bold text-white tracking-tight">
+                  Deterministic Execution
+                </h3>
+                <p className="text-[14px] text-slate-300 leading-relaxed">
+                  Zero LLM generation in the query loop. The 4-stage pipeline operates through rule extraction, semantic indexing, and graph traversal.
+                </p>
+              </div>
+              <div className="pt-6 mt-6 border-t border-white/[0.08] text-[12px] font-mono text-amber-400 font-semibold">
+                Sub-second response latency
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ── TIME MACHINE SCRUBBER INTERACTIVE ─────────────────────── */}
+      <section className="border-y border-white/[0.08] bg-[#07090E]/70 backdrop-blur-md py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <TimeMachineScrubber />
+        </div>
+      </section>
+
+      {/* ── PIPELINE FLOW (4 Steps) ───────────────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-6 py-20">
+        <Reveal className="max-w-2xl mb-12 space-y-2">
+          <span className="text-[12px] font-mono font-semibold uppercase text-amber-400">Deterministic Pipeline</span>
+          <h2 className="text-[32px] sm:text-[40px] font-extrabold text-white tracking-tight">
+            How PALIMN Answers in 4 Stages
+          </h2>
+          <p className="text-[15px] text-slate-300">
+            From ambiguous natural language query to provable ground truth.
+          </p>
+        </Reveal>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {STAGES.map((s, i) => (
+            <Reveal key={s.id} delay={i * 0.05}>
+              <div className="card h-full space-y-3">
+                <div className="text-[12px] font-mono font-bold text-amber-400">STAGE {s.id}</div>
+                <h4 className="text-[17px] font-bold text-white">{s.title}</h4>
+                <p className="text-[13px] text-slate-300 leading-relaxed">{s.desc}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        <div className="mt-10">
+          <Link to="/architecture" className="btn-ghost">
+            View Complete Architectural Contracts
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* ── BOTTOM CTA ────────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.08] bg-gradient-to-r from-amber-950/40 via-[#0E1528]/60 to-blue-950/40 backdrop-blur-xl py-16">
+        <div className="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
+          <div className="space-y-1">
+            <h3 className="text-[24px] font-bold text-white tracking-tight">
+              Test PALIMN with your own questions
+            </h3>
+            <p className="text-[14px] text-slate-300">
+              Run queries against LongMemEval_S or test live graph navigation.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link to="/chat" className="btn-primary">
+              Open Console
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+            <Link to="/benchmark" className="btn-ghost">
+              View Benchmarks
             </Link>
           </div>
         </div>
       </section>
+
     </div>
   );
 };

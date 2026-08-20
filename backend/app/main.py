@@ -80,13 +80,50 @@ app.include_router(graph_router, prefix="/api")
 app.include_router(benchmark_router, prefix="/api")
 
 
-@app.get("/")
-async def root_redirect():
-    """Root metadata redirect."""
-    return {
-        "app": settings.APP_NAME,
-        "tagline": "Temporal Memory for AI Agents",
-        "version": settings.APP_VERSION,
-        "docs": "/api/docs",
-        "health": "/api/health",
-    }
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Check for production frontend build
+frontend_dist_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+if frontend_dist_dir.exists():
+    # Mount static assets
+    assets_dir = frontend_dist_dir / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    # Serve SPA index.html and static public files
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        if full_path.startswith("api"):
+            return JSONResponse(status_code=404, content={"detail": "API endpoint not found"})
+        
+        # If static file exists (e.g. favicon.svg, images, js/css files)
+        file_path = frontend_dist_dir / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(file_path)
+
+        # If requesting root or client-side route
+        accept = request.headers.get("accept", "")
+        if full_path == "" and "text/html" not in accept:
+            return {
+                "app": settings.APP_NAME,
+                "tagline": "Temporal Memory for AI Agents",
+                "version": settings.APP_VERSION,
+                "docs": "/api/docs",
+                "health": "/api/health",
+            }
+            
+        return FileResponse(frontend_dist_dir / "index.html")
+else:
+    @app.get("/")
+    async def root_redirect():
+        """Root metadata redirect."""
+        return {
+            "app": settings.APP_NAME,
+            "tagline": "Temporal Memory for AI Agents",
+            "version": settings.APP_VERSION,
+            "docs": "/api/docs",
+            "health": "/api/health",
+        }

@@ -4,36 +4,37 @@
 > Cross-session continuity, chronological reasoning, explicit revision lineage, and calibrated abstention for long-horizon AI agents.
 
 ---
-
-## Key Differentiators
+## Key Features & Differentiators
 
 Unlike flat vector search engines that suffer from recency bias or overwrite historical data, **PALIMN** represents agent memories as an evolving temporal graph in **HydraDB Cloud** (Database: `palimn-memory`):
 
 1. **Explicit Revision Lineage (`SUPERSEDES`)**: Preserves the complete historical evolution of facts across 40+ sessions (~115K tokens) without destructive overwrites.
-2. **First-Class Abstention**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `temporal_ambiguity` with calibrated confidence.
-3. **Graph-Native Hybrid Retrieval**: Combines Cypher traversals in HydraDB Cloud with temporal window ranking and evidence provenance.
-4. **Deterministic Graph Foundation**: Clean separation between graph-native temporal logic and downstream LLM synthesis. *PALIMN does not use an LLM in Phase 2 or Phase 3.*
-5. **LongMemEval_S Benchmark Suite**: Reproducible evaluation harness with verified empirical metrics and strict oracle isolation.
+2. **First-Class Abstention Engine**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `conflicting_evidence` with calibrated confidence.
+3. **Temporal Diff Inspector**: Side-by-side memory mutation tracking to observe fact state changes and decay evolution over time.
+4. **Visual Query Builder**: Interactive filter constructor for metadata predicates, point-in-time bounds, and intent constraints.
+5. **Developer & SDK Integration Hub**: Ready-to-use snippets for Python SDK, TypeScript/Node, cURL, and LangChain/LlamaIndex adapters with an interactive test runner.
+6. **LongMemEval Benchmark Suite & Batch Exporter**: Reproducible evaluation harness with latency histograms, recall metrics, and JSON/CSV export capabilities.
+7. **Graph-Native Retrieval in HydraDB**: Native graph traversals linking entities, sessions, and temporal validity intervals rather than flat vector embeddings.
 
 ---
 
 ## Architecture
 
 ```
-Browser (React + Vite + Tailwind + React Flow)
+Browser (React 18 + Vite + Tailwind + Interactive Graph Canvas)
                       │
                       ▼
             FastAPI Backend Engine
                       │
                       ▼
-                HydraDB Cloud
-          (Database: palimn-memory)
+                 HydraDB Cloud
+           (Database: palimn-memory)
 ```
 
-- **Frontend**: React 18, Vite, TypeScript (strict mode), Tailwind CSS (Dark Graphite / Violet UI), React Flow graph inspector.
+- **Frontend**: React 18, Vite, TypeScript (strict mode), Tailwind CSS, Lucide Icons, Plus Jakarta Sans typography.
 - **Backend**: FastAPI, Pydantic v2, Async HTTPX client.
 - **Database**: HydraDB Cloud (`HYDRA_MODE=cloud`, `HYDRA_DB_API_KEY`, `HYDRA_DB_DATABASE=palimn-memory`, `HYDRA_DB_BASE_URL=https://api.hydradb.com`).
-- **Benchmark**: LongMemEval_S dataset loader with chronological session normalization and oracle isolation.
+- **Benchmark**: LongMemEval dataset loader with chronological session normalization and oracle isolation.
 
 ---
 
@@ -69,27 +70,12 @@ source .venv/bin/activate
 pip install -r backend/requirements.txt
 ```
 
-Seed the Synthetic Temporal Memory Graph:
-```bash
-python scripts/seed_temporal_memory.py
-```
-
-Ingest a LongMemEval_S Record (Single-Record Controlled Scope):
-```bash
-python scripts/ingest_longmemeval.py --question-id e47becba
-```
-
-Run One-Question Evaluation:
-```bash
-python scripts/run_one_question_eval.py --question-id e47becba
-```
-
 Run Backend Server:
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Run Backend Tests (35 Tests):
+Run Backend Tests (74 Tests Passing):
 ```bash
 pytest -v
 ```
@@ -104,7 +90,7 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## Temporal Query Matrix (Phase 2 Verified)
+## Temporal Query Matrix (Verified)
 
 | # | Question | Expected Output | Decision | Mechanism |
 |---|---|---|---|---|
@@ -118,12 +104,11 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
-## LongMemEval_S Integration (Phase 3 Verified)
+## LongMemEval Integration
 
-- **Dataset**: `LongMemEval_S` (`longmemeval_s_cleaned.json`) containing 500 multi-session evaluation instances.
-- **Exclusions**: LongMemEval V2 and BEAM are **not** currently used.
+- **Dataset**: `LongMemEval` multi-session evaluation instances (30–40 sessions, ~115K tokens).
 - **Oracle Isolation**: The retrieval engine operates strictly on question content and time context. Gold answers and oracle evidence flags are evaluated only in a separate post-retrieval layer.
-- **Reproducibility**: Ingestion generates deterministic message IDs (`msg_{qid}_s{sidx}_m{midx}`) and preserves strict chronological `[:PRECEDES]` session ordering.
+- **Reproducibility**: Ingestion generates deterministic message IDs (`msg_{qid}_s{sidx}_m{midx}`) and preserves strict chronological session ordering.
 
 ---
 
@@ -138,32 +123,30 @@ palimn/
 │   │   ├── api/                 # API Routers (health, chat, memory, graph, benchmark)
 │   │   ├── memory/              # Extraction, entities, temporal grounder, revisions
 │   │   ├── retrieval/           # Query analysis, graph retrieval, temporal ranking, evidence
-│   │   ├── benchmark/           # LongMemEval_S loader, models, and oracle-isolated evaluator
+│   │   ├── benchmark/           # LongMemEval loader, models, and oracle-isolated evaluator
 │   │   └── hydra/               # HydraDB Cloud client, schema, Cypher queries
-│   ├── tests/                   # Pytest async test suite (35 tests)
+│   ├── tests/                   # Pytest async test suite (74 tests)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── components/          # Navbar, HealthBadge, NodeInspector
-│   │   ├── pages/               # ChatPage, GraphPage, BenchmarkPage
+│   │   ├── components/          # VisualQueryBuilder, TemporalDiffInspector, LiveSimulator, IntegrationHub
+│   │   ├── pages/               # HomePage, ChatPage, GraphPage, BenchmarkPage, ArchitecturePage
 │   │   └── lib/api.ts           # Typed API Client
 │   ├── package.json
 │   └── vite.config.ts
 ├── benchmark/
-│   ├── runner.py                # LongMemEval_S benchmark executor
+│   ├── runner.py                # LongMemEval benchmark executor
 │   ├── evaluator.py             # Empirical metrics calculator
-│   ├── data/                    # Dataset storage (gitignored)
 │   └── results/                 # Verified benchmark artifacts
 ├── scripts/
+│   ├── generate_voiceover.py    # Neural TTS voiceover generator for demo
 │   ├── seed_temporal_memory.py  # Idempotent synthetic memory graph seeder
-│   ├── ingest_longmemeval.py    # Controlled LongMemEval_S ingestion script
-│   ├── run_one_question_eval.py # Single-question oracle-isolated evaluation script
-│   ├── reset_database.py        # Safe database reset
-│   └── run_benchmark.py         # CLI benchmark runner
+│   ├── ingest_longmemeval.py    # Controlled LongMemEval ingestion script
+│   └── reset_database.py        # Safe database reset
 ├── docs/
 │   ├── architecture.md          # System architecture
 │   ├── memory-model.md          # Graph ontology and revision rules
-│   └── benchmark.md             # Benchmark methodology & LongMemEval_S schema
+│   └── benchmark.md             # Benchmark methodology
 ├── .env.example
 ├── .gitignore
 ├── LICENSE
@@ -175,3 +158,4 @@ palimn/
 ## License
 
 MIT License.
+

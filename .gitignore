@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 *.env
+backend/.env
 
 # Python
 __pycache__/
@@ -62,11 +63,25 @@ Thumbs.db
 *.swo
 *~
 
-# IDE
+# IDE, Skills & Tooling
 .idea/
 .vscode/
 *.sublime-workspace
 *.sublime-project
+.gemini/
+.system_generated/
+.agents/
+skills-lock.json
+
+# Media & Voiceover Outputs
+voiceover/
+scripts/generate_voiceover.py
+*.mp3
+*.wav
+*.mp4
+*.mov
+*.mkv
+*.webm
 
 # Benchmark artifacts / datasets / temporary cache
 benchmark/results/
@@ -79,15 +94,12 @@ temp_datasets/
 benchmark_*.json
 .smoke_test_ids.txt
 
-# Markdown files (ignore all except README)
+# Documentation & Internal Design Files (Only keep root README.md)
+docs/
+DESIGN.md
+DESIGN_RESOURCES.md
 *.md
 **/*.md
 !README.md
 !readme.md
-!ReadMe.md
 !README.MD
-!**/README.md
-!**/readme.md
-!**/ReadMe.md
-!**/README.MD
-

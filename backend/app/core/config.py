@@ -14,11 +14,7 @@ class Settings(BaseSettings):
     # Server Configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    BACKEND_CORS_ORIGINS: Union[List[str], str] = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-    ]
+    BACKEND_CORS_ORIGINS: Union[List[str], str] = ["*"]
 
     # HydraDB Configuration
     HYDRA_MODE: str = "cloud"

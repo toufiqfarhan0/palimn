@@ -123,7 +123,7 @@ export interface BenchmarkResultsResponse {
   latest_run?: BenchmarkRunSummary | null;
 }
 
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch(`${API_BASE}/health`);

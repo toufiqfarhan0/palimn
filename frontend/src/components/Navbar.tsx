@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
-import { Menu, X, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles, Github } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PalimnLogo } from './PalimnLogo';
 
@@ -76,6 +76,18 @@ export const Navbar: React.FC = () => {
               HydraDB Live
             </div>
 
+            {/* GitHub Repo Button */}
+            <a
+              href="https://github.com/toufiqfarhan0/palimn"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[13px] font-medium text-slate-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] transition-all"
+              aria-label="GitHub Repository"
+            >
+              <Github className="w-4 h-4 text-slate-300" />
+              <span className="hidden sm:inline">GitHub</span>
+            </a>
+
             {/* Mobile menu toggle */}
             <button
               className="md:hidden p-2 text-slate-400 hover:text-white transition-colors"
@@ -107,6 +119,18 @@ export const Navbar: React.FC = () => {
                   {label}
                 </NavLink>
               ))}
+              <a
+                href="https://github.com/toufiqfarhan0/palimn"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 px-4 py-3.5 rounded-[8px] text-[15px] font-medium flex items-center justify-between text-slate-300 hover:text-white bg-white/[0.05] border border-white/[0.08]"
+              >
+                <span className="flex items-center gap-2.5">
+                  <Github className="w-4 h-4 text-amber-400" />
+                  GitHub Repository
+                </span>
+                <span className="text-[12px] font-mono text-slate-500">v0.1.0</span>
+              </a>
             </nav>
           </motion.div>
         )}

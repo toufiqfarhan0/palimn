@@ -15,6 +15,7 @@ import {
   DollarSign,
   Clock,
   Cpu,
+  Github,
 } from 'lucide-react';
 import { TimeMachineScrubber } from '../components/TimeMachineScrubber';
 import { AbstentionArena } from '../components/AbstentionArena';
@@ -124,6 +125,15 @@ export const HomePage: React.FC = () => {
               <Link to="/graph" className="btn-ghost">
                 Inspect Graph Universe
               </Link>
+              <a
+                href="https://github.com/toufiqfarhan0/palimn"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-[8px] text-[14px] font-semibold text-slate-300 hover:text-white bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] transition-all"
+              >
+                <Github className="w-4 h-4 text-slate-300" />
+                <span>GitHub Repo</span>
+              </a>
             </div>
 
             {/* Feature badges */}

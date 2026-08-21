@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { TimeMachineScrubber } from '../components/TimeMachineScrubber';
+import { BiTemporalInspector } from '../components/BiTemporalInspector';
 
 /* ─── Scroll-reveal helper ───────────────────────────────────────── */
 const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: string }> = ({
@@ -250,6 +251,13 @@ export const HomePage: React.FC = () => {
       <section className="border-y border-white/[0.08] bg-[#07090E]/70 backdrop-blur-md py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <TimeMachineScrubber />
+        </div>
+      </section>
+
+      {/* ── BI-TEMPORAL MATRIX INSPECTOR (Feature 1) ───────────────── */}
+      <section className="border-b border-white/[0.08] bg-[#07090E]/90 backdrop-blur-md py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <BiTemporalInspector />
         </div>
       </section>
 

@@ -9,7 +9,7 @@ class QueryIntent(BaseModel):
     """Structured graph traversal plan representing user query intent."""
     raw_query: str
     query_type: str = Field(
-        ..., description="'current_state' | 'historical_state' | 'session_scoped' | 'open_domain' | 'unknown'"
+        ..., description="'current_state' | 'historical_state' | 'session_scoped' | 'point_in_time_valid' | 'point_in_time_assertion' | 'open_domain' | 'unknown'"
     )
     subject: str = "user_demo"
     predicate: str = "lives_in"
@@ -18,6 +18,8 @@ class QueryIntent(BaseModel):
     session_id: Optional[str] = None
     temporal_anchor: Optional[str] = None
     temporal_context: Optional[str] = None
+    as_of_valid_time: Optional[str] = None
+    as_of_assertion_time: Optional[str] = None
     keywords: List[str] = Field(default_factory=list)
     concepts: List[str] = Field(default_factory=list)
     term_weights: Dict[str, float] = Field(default_factory=dict)
@@ -31,6 +33,8 @@ class QueryAnalyzer:
         query: str,
         user_id: str = "user_demo",
         time_context: Optional[str] = None,
+        as_of_valid_time: Optional[str] = None,
+        as_of_assertion_time: Optional[str] = None,
     ) -> QueryIntent:
         """Decompose query into intent, target predicate, reference objects, and session scope."""
         cleaned = query.strip().lower()
@@ -43,6 +47,41 @@ class QueryAnalyzer:
             )
 
         keywords, concepts, term_weights = extract_query_concepts(query)
+
+        # -------------------------------------------------------------
+        # Bi-Temporal Explicit Query Parameters
+        # -------------------------------------------------------------
+        if as_of_valid_time or as_of_assertion_time:
+            return QueryIntent(
+                raw_query=query,
+                query_type="point_in_time_valid" if as_of_valid_time else "point_in_time_assertion",
+                subject=user_id,
+                predicate="lives_in",
+                as_of_valid_time=as_of_valid_time,
+                as_of_assertion_time=as_of_assertion_time,
+                temporal_context=time_context,
+                keywords=keywords,
+                concepts=concepts,
+                term_weights=term_weights,
+            )
+
+        # -------------------------------------------------------------
+        # Bi-Temporal Point-in-Time Real-World Date Detection (e.g. "Where did I live in 2021?")
+        # -------------------------------------------------------------
+        pit_year_match = re.search(r"\b(in|during|around|back\s+in|as\s+of)\s+((?:19|20)\d{2})\b", cleaned)
+        if pit_year_match and ("live" in cleaned or "city" in cleaned or "reside" in cleaned or "was my" in cleaned):
+            target_year = pit_year_match.group(2)
+            return QueryIntent(
+                raw_query=query,
+                query_type="point_in_time_valid",
+                subject=user_id,
+                predicate="lives_in",
+                as_of_valid_time=f"{target_year}-06-01",
+                temporal_context=time_context,
+                keywords=keywords,
+                concepts=concepts,
+                term_weights=term_weights,
+            )
 
         # -------------------------------------------------------------
         # Phase 2 Preserved: Session-scoped queries (e.g. "Where did I live in Session 01?")

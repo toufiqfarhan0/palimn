@@ -11,6 +11,10 @@ from backend.app.memory.models import (
     StructuredIngestRequest,
     FactInput,
     MemoryStatus,
+    DecisionType,
+    BiTemporalQueryRequest,
+    BiTemporalQueryResponse,
+    BiTemporalTimelineEntry,
 )
 
 router = APIRouter(prefix="/memory", tags=["Memory"])
@@ -230,6 +234,64 @@ async def search_memories(
     )
 
 
+@router.post("/bitemporal/query", response_model=BiTemporalQueryResponse)
+async def query_bitemporal(
+    req: BiTemporalQueryRequest,
+    hydra: HydraClient = Depends(get_hydra_client),
+) -> BiTemporalQueryResponse:
+    """Query the memory graph at a specific 2D temporal coordinate (Valid Time Tv and/or Assertion Time Ta)."""
+    matched_fact = await hydra.find_bi_temporal_fact(
+        subject=req.subject,
+        predicate=req.predicate,
+        as_of_valid_time=req.as_of_valid_time,
+        as_of_assertion_time=req.as_of_assertion_time,
+    )
+    timeline = await hydra.get_bi_temporal_timeline(req.subject, req.predicate)
+
+    if matched_fact:
+        reasoning = (
+            f"Resolved fact '{matched_fact.memory_id}' ({matched_fact.subject} {matched_fact.predicate} {matched_fact.object}) "
+            f"for Valid Time Tv={req.as_of_valid_time or 'current'} and Assertion Cutoff Ta={req.as_of_assertion_time or 'latest'}."
+        )
+        return BiTemporalQueryResponse(
+            subject=req.subject,
+            predicate=req.predicate,
+            as_of_valid_time=req.as_of_valid_time,
+            as_of_assertion_time=req.as_of_assertion_time,
+            matched_fact=matched_fact,
+            timeline=timeline,
+            status="resolved",
+            decision=DecisionType.ANSWERABLE,
+            reasoning=reasoning,
+        )
+    else:
+        reasoning = (
+            f"No valid fact existed for '{req.subject}' predicate '{req.predicate}' at "
+            f"Valid Time Tv={req.as_of_valid_time or 'any'} and Assertion Cutoff Ta={req.as_of_assertion_time or 'latest'}."
+        )
+        return BiTemporalQueryResponse(
+            subject=req.subject,
+            predicate=req.predicate,
+            as_of_valid_time=req.as_of_valid_time,
+            as_of_assertion_time=req.as_of_assertion_time,
+            matched_fact=None,
+            timeline=timeline,
+            status="unrecorded",
+            decision=DecisionType.ABSTAIN,
+            reasoning=reasoning,
+        )
+
+
+@router.get("/bitemporal/timeline", response_model=List[BiTemporalTimelineEntry])
+async def get_bitemporal_timeline(
+    subject: str = Query("user_demo", description="Entity subject"),
+    predicate: str = Query("lives_in", description="Predicate to query"),
+    hydra: HydraClient = Depends(get_hydra_client),
+) -> List[BiTemporalTimelineEntry]:
+    """Retrieve full 2D bi-temporal evolution timeline (Valid Time intervals vs Assertion timestamps)."""
+    return await hydra.get_bi_temporal_timeline(subject, predicate)
+
+
 @router.get("/{memory_id}", response_model=Fact)
 async def get_memory_by_id(
     memory_id: str,
@@ -240,3 +302,4 @@ async def get_memory_by_id(
     if not fact:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found in temporal graph.")
     return fact
+

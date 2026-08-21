@@ -47,6 +47,8 @@ async def query_chat(
         req.question,
         user_id=req.user_id or "user_demo",
         time_context=req.time_context,
+        as_of_valid_time=req.as_of_valid_time,
+        as_of_assertion_time=req.as_of_assertion_time,
     )
 
     # 2. Retrieve candidates via Graph Traversal

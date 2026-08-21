@@ -39,35 +39,7 @@ class GraphRetriever:
         """
         # 1. Direct Graph State Traversal (Phase 2 Pre-Seeded Synthetics for local unit tests)
         if getattr(self.hydra, "mode", "local") == "local":
-            if intent.query_type == "point_in_time_valid" or intent.as_of_valid_time:
-                fact = await self.hydra.find_bi_temporal_fact(
-                    intent.subject,
-                    intent.predicate,
-                    as_of_valid_time=intent.as_of_valid_time,
-                    as_of_assertion_time=intent.as_of_assertion_time,
-                )
-                if fact:
-                    reasoning = (
-                        f"Bi-temporal point-in-time resolution located fact '{fact.memory_id}' "
-                        f"({fact.subject} {fact.predicate} {fact.object}) valid from {fact.valid_from} "
-                        f"until {fact.valid_until or 'present'} (asserted: {fact.asserted_at or 'origin'})."
-                    )
-                    return [fact], reasoning
-                return [], f"No memory fact was valid for '{intent.subject}' at world time '{intent.as_of_valid_time}'."
-
-            elif intent.query_type == "point_in_time_assertion" or intent.as_of_assertion_time:
-                fact = await self.hydra.find_fact_as_of_assertion_time(
-                    intent.subject, intent.predicate, assertion_time=intent.as_of_assertion_time or "2025-01-10"
-                )
-                if fact:
-                    reasoning = (
-                        f"Assertion-time state reconstruction located fact '{fact.memory_id}' "
-                        f"({fact.subject} {fact.predicate} {fact.object}) known to the agent prior to {intent.as_of_assertion_time}."
-                    )
-                    return [fact], reasoning
-                return [], f"No memory fact was known to the agent prior to '{intent.as_of_assertion_time}'."
-
-            elif intent.query_type == "current_state":
+            if intent.query_type == "current_state":
                 fact = await self.hydra.find_active_fact(intent.subject, intent.predicate)
                 if fact:
                     reasoning = (

@@ -21,7 +21,6 @@ from backend.app.memory.models import (
     GraphResponse,
     Provenance,
     StructuredIngestRequest,
-    BiTemporalTimelineEntry,
 )
 from backend.app.benchmark.models import LongMemEvalRecord
 from backend.app.hydra.cloud_store import HydraCloudStore
@@ -91,7 +90,7 @@ class InMemoryGraphStore:
         return new_edge
 
     def seed_synthetic_data(self) -> Dict[str, int]:
-        """Seed synthetic demo data for unit tests with bi-temporal ground truth."""
+        """Seed synthetic demo data for unit tests."""
         self.merge_node("user_demo", "User", {
             "id": "user_demo",
             "name": "Demo User",
@@ -151,9 +150,6 @@ class InMemoryGraphStore:
             "created_at": "2025-01-10T10:00:00Z",
             "valid_from": "2025-01-10",
             "valid_until": "2025-03-15",
-            "asserted_at": "2025-01-10T10:00:00Z",
-            "assertion_session_id": "session_01",
-            "is_retroactive": False,
             "status": MemoryStatus.SUPERSEDED.value,
             "confidence": 1.0,
         })
@@ -169,9 +165,6 @@ class InMemoryGraphStore:
             "created_at": "2025-03-15T14:30:00Z",
             "valid_from": "2025-03-15",
             "valid_until": None,
-            "asserted_at": "2025-03-15T14:30:00Z",
-            "assertion_session_id": "session_02",
-            "is_retroactive": False,
             "status": MemoryStatus.ACTIVE.value,
             "confidence": 1.0,
         })
@@ -202,7 +195,6 @@ class InMemoryGraphStore:
             "total_nodes": len(self.nodes),
             "total_edges": len(self.edges),
         }
-
 
 
 class HydraClient:
@@ -614,151 +606,6 @@ class HydraClient:
                     break
         return results
 
-    async def find_fact_as_of_valid_time(
-        self, subject: str, predicate: str, valid_time: str
-    ) -> Optional[Fact]:
-        """Query fact that was valid in the real world at a specific point in time (Tv)."""
-        clean_valid = valid_time.strip()
-        candidates: List[Fact] = []
-        for node in self._in_memory_store.nodes.values():
-            if node.get("label") == "Fact":
-                p = node.get("properties", {})
-                if (
-                    p.get("subject", "").lower() == subject.lower()
-                    and p.get("predicate", "").lower() == predicate.lower()
-                ):
-                    v_from = str(p.get("valid_from") or "")
-                    v_until = p.get("valid_until")
-                    
-                    if not v_from:
-                        continue
-                    
-                    # Normalize comparison keys (e.g. "2021" -> "2021-01-01")
-                    norm_target = clean_valid if len(clean_valid) >= 10 else f"{clean_valid}-01-01" if len(clean_valid) == 4 else f"{clean_valid}-01"
-                    norm_from = v_from if len(v_from) >= 10 else f"{v_from}-01-01" if len(v_from) == 4 else f"{v_from}-01"
-                    
-                    if norm_from <= norm_target:
-                        if v_until is None or not str(v_until).strip():
-                            candidates.append(self._node_to_fact(node))
-                        else:
-                            norm_until = str(v_until)
-                            norm_until = norm_until if len(norm_until) >= 10 else f"{norm_until}-12-31" if len(norm_until) == 4 else f"{norm_until}-28"
-                            if norm_target <= norm_until:
-                                candidates.append(self._node_to_fact(node))
-
-        if not candidates:
-            return None
-        # Return candidate with the most specific/latest valid_from
-        candidates.sort(key=lambda f: str(f.valid_from or ""), reverse=True)
-        return candidates[0]
-
-    async def find_fact_as_of_assertion_time(
-        self, subject: str, predicate: str, assertion_time: str
-    ) -> Optional[Fact]:
-        """Reconstruct what fact was active as of agent knowledge cutoff (Ta)."""
-        clean_target = assertion_time.strip()
-        known_facts: List[Tuple[Fact, Dict[str, Any]]] = []
-        for node in self._in_memory_store.nodes.values():
-            if node.get("label") == "Fact":
-                p = node.get("properties", {})
-                if (
-                    p.get("subject", "").lower() == subject.lower()
-                    and p.get("predicate", "").lower() == predicate.lower()
-                ):
-                    assert_time = str(p.get("asserted_at") or p.get("created_at") or "")
-                    if assert_time and assert_time[:10] <= clean_target[:10]:
-                        known_facts.append((self._node_to_fact(node), p))
-
-        if not known_facts:
-            return None
-
-        # Sort by assertion timestamp to determine which was latest known
-        known_facts.sort(key=lambda x: str(x[0].asserted_at or x[0].created_at), reverse=True)
-        return known_facts[0][0]
-
-    async def find_bi_temporal_fact(
-        self,
-        subject: str,
-        predicate: str,
-        as_of_valid_time: Optional[str] = None,
-        as_of_assertion_time: Optional[str] = None,
-    ) -> Optional[Fact]:
-        """Perform 2D bi-temporal point-in-time state resolution."""
-        if as_of_valid_time and as_of_assertion_time:
-            # 1. Filter facts known at as_of_assertion_time
-            known_candidates: List[Fact] = []
-            for node in self._in_memory_store.nodes.values():
-                if node.get("label") == "Fact":
-                    p = node.get("properties", {})
-                    if (
-                        p.get("subject", "").lower() == subject.lower()
-                        and p.get("predicate", "").lower() == predicate.lower()
-                    ):
-                        assert_time = str(p.get("asserted_at") or p.get("created_at") or "")
-                        if assert_time and assert_time[:10] <= as_of_assertion_time[:10]:
-                            known_candidates.append(self._node_to_fact(node))
-
-            # 2. Filter known candidates by real-world valid time
-            target_v = as_of_valid_time[:10] if len(as_of_valid_time) >= 10 else f"{as_of_valid_time}-01-01"
-            valid_matches = []
-            for f in known_candidates:
-                v_from = str(f.valid_from or "")[:10] if f.valid_from else ""
-                v_until = str(f.valid_until or "")[:10] if f.valid_until else None
-                if v_from and v_from <= target_v:
-                    if v_until is None or target_v <= v_until:
-                        valid_matches.append(f)
-
-            if valid_matches:
-                valid_matches.sort(key=lambda f: str(f.valid_from or ""), reverse=True)
-                return valid_matches[0]
-            return None
-
-        elif as_of_valid_time:
-            return await self.find_fact_as_of_valid_time(subject, predicate, as_of_valid_time)
-        elif as_of_assertion_time:
-            return await self.find_fact_as_of_assertion_time(subject, predicate, as_of_assertion_time)
-        else:
-            return await self.find_active_fact(subject, predicate)
-
-    async def get_bi_temporal_timeline(
-        self, subject: str, predicate: str
-    ) -> List[BiTemporalTimelineEntry]:
-        """Retrieve full bi-temporal revision and assertion history for subject/predicate."""
-        entries: List[BiTemporalTimelineEntry] = []
-        for node in self._in_memory_store.nodes.values():
-            if node.get("label") == "Fact":
-                p = node.get("properties", {})
-                if (
-                    p.get("subject", "").lower() == subject.lower()
-                    and p.get("predicate", "").lower() == predicate.lower()
-                ):
-                    superseded_by = None
-                    fact_id = p.get("memory_id") or p.get("id") or node["id"]
-                    for edge in self._in_memory_store.edges:
-                        if edge.get("type") == "SUPERSEDES" and edge.get("target") == fact_id:
-                            superseded_by = edge.get("source")
-                            break
-
-                    entries.append(
-                        BiTemporalTimelineEntry(
-                            memory_id=fact_id,
-                            subject=p.get("subject", subject),
-                            predicate=p.get("predicate", predicate),
-                            object=p.get("object", ""),
-                            valid_from=p.get("valid_from"),
-                            valid_until=p.get("valid_until"),
-                            asserted_at=p.get("asserted_at") or p.get("created_at"),
-                            assertion_session_id=p.get("assertion_session_id") or p.get("session_id"),
-                            is_retroactive=bool(p.get("is_retroactive", False)),
-                            status=MemoryStatus(p.get("status", MemoryStatus.ACTIVE.value)),
-                            superseded_by=superseded_by,
-                            confidence=float(p.get("confidence", 1.0)),
-                        )
-                    )
-
-        entries.sort(key=lambda e: (str(e.valid_from or ""), str(e.asserted_at or "")))
-        return entries
-
     async def get_graph(self, limit: int = 100) -> Dict[str, Any]:
         """Retrieve graph snapshot for React Flow visualizer."""
         nodes: List[Dict[str, Any]] = []
@@ -860,9 +707,6 @@ class HydraClient:
             created_at=p.get("created_at", datetime.now().isoformat()),
             valid_from=p.get("valid_from"),
             valid_until=p.get("valid_until"),
-            asserted_at=p.get("asserted_at") or p.get("created_at"),
-            assertion_session_id=p.get("assertion_session_id") or p.get("session_id"),
-            is_retroactive=bool(p.get("is_retroactive", False)),
             status=MemoryStatus(p.get("status", MemoryStatus.ACTIVE.value)),
             confidence=float(p.get("confidence", 1.0)),
             provenance=Provenance(

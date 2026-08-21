@@ -125,40 +125,6 @@ export interface BenchmarkResultsResponse {
 
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
 
-export interface BiTemporalTimelineEntry {
-  memory_id: string;
-  subject: string;
-  predicate: string;
-  object: string;
-  valid_from?: string | null;
-  valid_until?: string | null;
-  asserted_at?: string | null;
-  assertion_session_id?: string | null;
-  is_retroactive: boolean;
-  status: MemoryStatus;
-  superseded_by?: string | null;
-  confidence: number;
-}
-
-export interface BiTemporalQueryRequest {
-  subject?: string;
-  predicate: string;
-  as_of_valid_time?: string | null;
-  as_of_assertion_time?: string | null;
-}
-
-export interface BiTemporalQueryResponse {
-  subject: string;
-  predicate: string;
-  as_of_valid_time?: string | null;
-  as_of_assertion_time?: string | null;
-  matched_fact?: EvidenceItem | null;
-  timeline: BiTemporalTimelineEntry[];
-  status: string;
-  decision: DecisionType;
-  reasoning: string;
-}
-
 export async function fetchHealth(): Promise<HealthResponse> {
   const res = await fetch(`${API_BASE}/health`);
   if (!res.ok) {
@@ -194,32 +160,3 @@ export async function fetchBenchmarkResults(): Promise<BenchmarkResultsResponse>
   }
   return res.json();
 }
-
-export async function fetchBiTemporalTimeline(
-  subject: string = 'user_demo',
-  predicate: string = 'lives_in'
-): Promise<BiTemporalTimelineEntry[]> {
-  const res = await fetch(`${API_BASE}/memory/bitemporal/timeline?subject=${encodeURIComponent(subject)}&predicate=${encodeURIComponent(predicate)}`);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch bi-temporal timeline: ${res.statusText}`);
-  }
-  return res.json();
-}
-
-export async function queryBiTemporal(req: BiTemporalQueryRequest): Promise<BiTemporalQueryResponse> {
-  const res = await fetch(`${API_BASE}/memory/bitemporal/query`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      subject: req.subject || 'user_demo',
-      predicate: req.predicate,
-      as_of_valid_time: req.as_of_valid_time,
-      as_of_assertion_time: req.as_of_assertion_time,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`Bi-temporal query failed: ${res.statusText}`);
-  }
-  return res.json();
-}
-

@@ -38,7 +38,4 @@ SCHEMA_INITIALIZATION_QUERIES = [
     "CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.subject, f.predicate)",
     "CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.status)",
     "CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.valid_from, f.valid_until)",
-    "CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.asserted_at)",
-    "CREATE INDEX IF NOT EXISTS FOR (f:Fact) ON (f.is_retroactive)",
 ]
-

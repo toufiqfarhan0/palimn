@@ -1,8 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, RotateCcw, Network, Filter, Clock } from 'lucide-react';
+import { X, RotateCcw, Network, Filter } from 'lucide-react';
 import { VisualQueryBuilder } from '../components/VisualQueryBuilder';
-import { BiTemporalInspector } from '../components/BiTemporalInspector';
 
 /* ─── Graph data ────────────────────────────────────────────────── */
 const NODES_INIT = [
@@ -36,7 +35,7 @@ const TYPE_COLOR: Record<string, string> = {
 type NodeId = string;
 
 export const GraphPage: React.FC = () => {
-  const [viewMode, setViewMode] = useState<'CANVAS' | 'QUERY_BUILDER' | 'BITEMPORAL'>('CANVAS');
+  const [viewMode, setViewMode] = useState<'CANVAS' | 'QUERY_BUILDER'>('CANVAS');
   const [nodePos, setNodePos] = useState<Record<string, { x: number; y: number }>>(() =>
     Object.fromEntries(NODES_INIT.map(n => [n.id, { x: n.x, y: n.y }]))
   );
@@ -169,17 +168,6 @@ export const GraphPage: React.FC = () => {
           >
             <Filter className="w-3.5 h-3.5" />
             <span>Visual Query Builder</span>
-          </button>
-          <button
-            onClick={() => setViewMode('BITEMPORAL')}
-            className={`px-3.5 py-1.5 text-xs font-bold rounded-[6px] transition-all flex items-center gap-1.5 ${
-              viewMode === 'BITEMPORAL'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Bi-Temporal Matrix</span>
           </button>
         </div>
       </div>
@@ -416,13 +404,6 @@ export const GraphPage: React.FC = () => {
       {viewMode === 'QUERY_BUILDER' && (
         <div>
           <VisualQueryBuilder />
-        </div>
-      )}
-
-      {/* Mode 3: Bi-Temporal Matrix Inspector */}
-      {viewMode === 'BITEMPORAL' && (
-        <div>
-          <BiTemporalInspector />
         </div>
       )}
 

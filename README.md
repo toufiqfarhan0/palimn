@@ -9,21 +9,19 @@
 Unlike flat vector search engines that suffer from recency bias or overwrite historical data, **PALIMN** represents agent memories as an evolving temporal graph in **HydraDB Cloud** (Database: `palimn-memory`):
 
 1. **Explicit Revision Lineage (`SUPERSEDES`)**: Preserves the complete historical evolution of facts across 40+ sessions (~115K tokens) without destructive overwrites.
-2. **Decoupled Bi-Temporal Memory Engine ($T_v \times T_a$)**: Decouples real-world **Valid Time** ($T_v$, when a fact occurred in reality) from agent **Assertion Time** ($T_a$, when the agent learned it). Enables retroactive updates (e.g. learning in Session 3 about events from 2019–2020) and calibrated point-in-time flashback reconstruction with zero knowledge leakage.
-3. **First-Class Abstention Engine**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `conflicting_evidence` with calibrated confidence.
-4. **Bi-Temporal Matrix Inspector**: Interactive 2D slice evaluator with scenario presets and real-time fact lineage ribbons.
-5. **Temporal Diff Inspector**: Side-by-side memory mutation tracking to observe fact state changes and decay evolution over time.
-6. **Visual Query Builder**: Interactive filter constructor for metadata predicates, point-in-time bounds, and intent constraints.
-7. **Developer & SDK Integration Hub**: Ready-to-use snippets for Python SDK, TypeScript/Node, cURL, and LangChain/LlamaIndex adapters with an interactive test runner.
-8. **LongMemEval Benchmark Suite & Batch Exporter**: Reproducible evaluation harness with latency histograms, recall metrics, and JSON/CSV export capabilities.
-9. **Graph-Native Retrieval in HydraDB**: Native graph traversals linking entities, sessions, and temporal validity intervals rather than flat vector embeddings.
+2. **First-Class Abstention Engine**: Distinguishes answerable questions from `insufficient_evidence`, `no_matching_memory`, and `conflicting_evidence` with calibrated confidence.
+3. **Temporal Diff Inspector**: Side-by-side memory mutation tracking to observe fact state changes and decay evolution over time.
+4. **Visual Query Builder**: Interactive filter constructor for metadata predicates, point-in-time bounds, and intent constraints.
+5. **Developer & SDK Integration Hub**: Ready-to-use snippets for Python SDK, TypeScript/Node, cURL, and LangChain/LlamaIndex adapters with an interactive test runner.
+6. **LongMemEval Benchmark Suite & Batch Exporter**: Reproducible evaluation harness with latency histograms, recall metrics, and JSON/CSV export capabilities.
+7. **Graph-Native Retrieval in HydraDB**: Native graph traversals linking entities, sessions, and temporal validity intervals rather than flat vector embeddings.
 
 ---
 
 ## Architecture
 
 ```
-Browser (React 18 + Vite + Tailwind + Interactive Graph Canvas + Bi-Temporal Inspector)
+Browser (React 18 + Vite + Tailwind + Interactive Graph Canvas)
                       │
                       ▼
             FastAPI Backend Engine
@@ -77,7 +75,7 @@ Run Backend Server:
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Run Backend Tests (83 Tests Passing):
+Run Backend Tests (74 Tests Passing):
 ```bash
 pytest -v
 ```
@@ -94,18 +92,15 @@ Open `http://localhost:5173` in your browser.
 
 ## Temporal Query Matrix (Verified)
 
-| # | Question / Query Slice | Expected Output | Decision | Mechanism |
+| # | Question | Expected Output | Decision | Mechanism |
 |---|---|---|---|---|
 | **1** | *"Where do I live now?"* | `Hyderabad` | `answerable` | Active fact retrieval (`status: 'active'`) |
 | **2** | *"Where did I live before Hyderabad?"* | `Bangalore` | `answerable` | `SUPERSEDES` revision lineage traversal |
-| **3** | *"Where did I live in 2021?"* | `Bangalore` | `answerable` | Valid-time point-in-time extraction ($T_v=\text{'2021'}$) |
-| **4** | *"Where did I live in 2019?"* | `Tokyo` | `answerable` | Retroactive memory resolution ($T_v=\text{'2019-2020'}$) |
-| **5** | *"Where did I live in Session 01?"* | `Bangalore` | `answerable` | Session-scoped temporal filtering |
-| **6** | *"Where did I live in Session 02?"* | `Hyderabad` | `answerable` | Session-scoped temporal filtering |
-| **7** | *"Where did I live in Session 99?"* | *None* | `abstain` (`no_matching_memory`) | Missing-information abstention |
-| **8** | *$T_v=\text{'2020'} \times T_a=\text{'2025-01'}$* | *None* | `abstain` | Knowledge leakage prevention (Tokyo not yet asserted) |
-| **9** | *"What city do I currently live in?"* | `Hyderabad` | `answerable` | Current-state retrieval |
-| **10** | *"What city did I previously live in?"* | `Bangalore` | `answerable` | Historical-state retrieval |
+| **3** | *"Where did I live in Session 01?"* | `Bangalore` | `answerable` | Session-scoped temporal filtering |
+| **4** | *"Where did I live in Session 02?"* | `Hyderabad` | `answerable` | Session-scoped temporal filtering |
+| **5** | *"Where did I live in Session 99?"* | *None* | `abstain` (`no_matching_memory`) | Missing-information abstention |
+| **6** | *"What city do I currently live in?"* | `Hyderabad` | `answerable` | Current-state retrieval |
+| **7** | *"What city did I previously live in?"* | `Bangalore` | `answerable` | Historical-state retrieval |
 
 ---
 

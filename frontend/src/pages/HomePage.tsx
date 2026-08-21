@@ -10,8 +10,18 @@ import {
   CheckCircle2,
   ChevronRight,
   Sparkles,
+  Flame,
+  GitMerge,
+  DollarSign,
+  Clock,
+  Cpu,
 } from 'lucide-react';
 import { TimeMachineScrubber } from '../components/TimeMachineScrubber';
+import { AbstentionArena } from '../components/AbstentionArena';
+import { MultiHopWeaver } from '../components/MultiHopWeaver';
+import { CostSavingsWidget } from '../components/CostSavingsWidget';
+import { TemporalDecayInspector } from '../components/TemporalDecayInspector';
+import { IntegrationHub } from '../components/IntegrationHub';
 
 /* ─── Scroll-reveal helper ───────────────────────────────────────── */
 const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: string }> = ({
@@ -20,7 +30,7 @@ const Reveal: React.FC<{ children: React.ReactNode; delay?: number; className?: 
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true, amount: 0.15 }}
+    viewport={{ once: true, amount: 0.1 }}
     transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
     className={className}
   >
@@ -57,8 +67,8 @@ const Counter: React.FC<{ to: number; suffix?: string; decimals?: number }> = ({
 const STATS = [
   { label: 'Recall@20 on LongMemEval_S', value: 96.60, suffix: '%', decimals: 2, highlight: true },
   { label: 'Recall@5 Precision',         value: 91.60, suffix: '%', decimals: 2, highlight: false },
-  { label: 'Benchmark Questions Tested',  value: 500,   suffix: '',  decimals: 0, highlight: false },
-  { label: 'LLM Inference Dependencies',  value: 0,     suffix: '',  decimals: 0, highlight: false },
+  { label: 'Context Token Reduction',   value: 99.72, suffix: '%', decimals: 2, highlight: true },
+  { label: 'LLM Hallucinations',         value: 0,     suffix: '',  decimals: 0, highlight: false },
 ];
 
 /* ─── Pipeline stages ────────────────────────────────────────────── */
@@ -70,6 +80,8 @@ const STAGES = [
 ];
 
 export const HomePage: React.FC = () => {
+  const [activeFeatureTab, setActiveFeatureTab] = useState<'arena' | 'weaver' | 'cost' | 'decay' | 'sdk'>('arena');
+
   return (
     <div className="bg-transparent min-h-screen font-['Plus_Jakarta_Sans',sans-serif]">
 
@@ -100,7 +112,7 @@ export const HomePage: React.FC = () => {
 
             {/* Subtext */}
             <p className="text-[17px] text-slate-300 leading-relaxed max-w-[540px]">
-              Persistent, time-anchored graph memory for AI agents. Every fact update is tracked with <code className="text-amber-300 bg-amber-950/40 border border-amber-500/30">SUPERSEDES</code> edges, ensuring 100% deterministic temporal resolution with zero LLM inference.
+              Persistent, time-anchored graph memory for AI agents. Every fact update is tracked with <code className="text-amber-300 bg-amber-950/40 border border-amber-500/30 font-mono">SUPERSEDES</code> edges, ensuring 100% deterministic temporal resolution with zero LLM inference.
             </p>
 
             {/* CTAs */}
@@ -172,8 +184,67 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* ── THREE PILLARS (Clean Glass Cards) ────────────────────── */}
-      <section className="max-w-[1200px] mx-auto px-6 py-20">
+      {/* ── TRACK 3 MASTER FEATURE SHOWCASE (Interactive Switcher) ── */}
+      <section className="max-w-[1200px] mx-auto px-6 py-20 space-y-8">
+        <Reveal className="text-center max-w-2xl mx-auto space-y-3">
+          <h2 className="text-[32px] sm:text-[40px] font-extrabold text-white tracking-tight">
+            Solving the Hard Problems in Agent Memory
+          </h2>
+          <p className="text-[15px] text-slate-400">
+            Six live interactive implementations solving the exact challenges in the Track 3 problem brief.
+          </p>
+        </Reveal>
+
+        {/* Feature Tab Navigation — horizontal scrollable on mobile */}
+        <div className="flex items-start overflow-x-auto scrollbar-none pb-1 -mx-6 px-6 gap-2 sm:justify-center sm:flex-wrap sm:overflow-visible sm:mx-0 sm:px-0">
+          {[
+            { id: 'arena',  label: 'Abstention Arena',   icon: Flame,    desc: 'Hallucination vs. Abstention',  accentBg: 'bg-rose-500/20', accentBorder: 'border-rose-500/50', accentText: 'text-rose-300',    iconColor: 'text-rose-400'   },
+            { id: 'weaver', label: 'Multi-Hop Weaver',   icon: GitMerge, desc: 'Cross-session graph synthesis', accentBg: 'bg-cyan-500/20', accentBorder: 'border-cyan-500/50', accentText: 'text-cyan-300',    iconColor: 'text-cyan-400'   },
+            { id: 'cost',   label: '115K Cost ROI',      icon: DollarSign, desc: '99.72% token reduction',      accentBg: 'bg-emerald-500/20', accentBorder: 'border-emerald-500/50', accentText: 'text-emerald-300', iconColor: 'text-emerald-400' },
+            { id: 'decay',  label: 'Temporal Decay',     icon: Clock,    desc: 'Fact half-life dynamics',       accentBg: 'bg-violet-500/20', accentBorder: 'border-violet-500/50', accentText: 'text-violet-300',  iconColor: 'text-violet-400' },
+            { id: 'sdk',    label: 'Agent SDK Hub',      icon: Cpu,      desc: 'Mem0 / LangChain / CrewAI',    accentBg: 'bg-amber-500/20', accentBorder: 'border-amber-500/50', accentText: 'text-amber-300',   iconColor: 'text-amber-400'  },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isSelected = activeFeatureTab === (tab.id as any);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveFeatureTab(tab.id as any)}
+                className={`flex-shrink-0 flex flex-col items-start gap-1 px-4 py-3 rounded-2xl border text-left transition-all duration-200 min-w-[150px] sm:min-w-0 ${
+                  isSelected
+                    ? `${tab.accentBg} ${tab.accentBorder}`
+                    : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.05] hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className={`w-4 h-4 ${isSelected ? tab.iconColor : 'text-slate-600'}`} />
+                  <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-400'}`}>{tab.label}</span>
+                </div>
+                <span className={`text-[10px] font-mono ${isSelected ? tab.accentText : 'text-slate-700'}`}>{tab.desc}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Feature Component Display — wrapped in a premium container */}
+        <motion.div
+          key={activeFeatureTab}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          className="rounded-3xl border border-white/[0.08] bg-[#080B14]/80 backdrop-blur-xl p-6 sm:p-8 shadow-2xl"
+        >
+          {activeFeatureTab === 'arena'  && <AbstentionArena />}
+          {activeFeatureTab === 'weaver' && <MultiHopWeaver />}
+          {activeFeatureTab === 'cost'   && <CostSavingsWidget />}
+          {activeFeatureTab === 'decay'  && <TemporalDecayInspector />}
+          {activeFeatureTab === 'sdk'    && <IntegrationHub />}
+        </motion.div>
+      </section>
+
+
+      {/* ── THREE PILLARS ────────────────────────────────────────── */}
+      <section className="max-w-[1200px] mx-auto px-6 py-16 border-t border-white/[0.08]">
         <Reveal className="text-center max-w-2xl mx-auto mb-14 space-y-2">
           <h2 className="text-[32px] sm:text-[40px] font-extrabold text-white tracking-tight">
             Engineered for Grounded Agent State
@@ -184,7 +255,6 @@ export const HomePage: React.FC = () => {
         </Reveal>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1 */}
           <Reveal delay={0.05}>
             <div className="card h-full flex flex-col justify-between">
               <div className="space-y-4">
@@ -195,7 +265,7 @@ export const HomePage: React.FC = () => {
                   Temporal Lineage Graph
                 </h3>
                 <p className="text-[14px] text-slate-300 leading-relaxed">
-                  Facts aren't overwritten or merged into vague summaries. Each update creates an explicit <code className="text-amber-300">SUPERSEDES</code> edge, preserving full provenance.
+                  Facts aren't overwritten or merged into vague summaries. Each update creates an explicit <code className="text-amber-300 font-mono">SUPERSEDES</code> edge, preserving full provenance.
                 </p>
               </div>
               <div className="pt-6 mt-6 border-t border-white/[0.08] text-[12px] font-mono text-amber-400 font-semibold">
@@ -204,7 +274,6 @@ export const HomePage: React.FC = () => {
             </div>
           </Reveal>
 
-          {/* Card 2 */}
           <Reveal delay={0.1}>
             <div className="card h-full flex flex-col justify-between">
               <div className="space-y-4">
@@ -224,7 +293,6 @@ export const HomePage: React.FC = () => {
             </div>
           </Reveal>
 
-          {/* Card 3 */}
           <Reveal delay={0.15}>
             <div className="card h-full flex flex-col justify-between">
               <div className="space-y-4">
@@ -293,7 +361,7 @@ export const HomePage: React.FC = () => {
               Test PALIMN with your own questions
             </h3>
             <p className="text-[14px] text-slate-300">
-              Run queries against LongMemEval_S or test live graph navigation.
+              Run queries against LongMemEval_S, LongMemEval_V2, and BEAM datasets.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">

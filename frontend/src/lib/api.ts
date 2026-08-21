@@ -153,10 +153,161 @@ export async function fetchGraphData(limit: number = 100): Promise<GraphResponse
   return res.json();
 }
 
-export async function fetchBenchmarkResults(): Promise<BenchmarkResultsResponse> {
-  const res = await fetch(`${API_BASE}/benchmark/results`);
+export async function fetchBenchmarkResults(dataset: string = "LongMemEval_S"): Promise<BenchmarkResultsResponse> {
+  const res = await fetch(`${API_BASE}/benchmark/results?dataset=${encodeURIComponent(dataset)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch benchmark: ${res.statusText}`);
   }
   return res.json();
 }
+
+/* ─── TRACK 3: ADVANCED EXTENSION TYPES & CLIENT CALLS ─────────────── */
+
+export interface VectorRagResult {
+  decision: string;
+  hallucinated: boolean;
+  retrieved_chunk: string;
+  cosine_similarity: number;
+  synthesized_answer: string;
+  explanation: string;
+  latency_ms: number;
+}
+
+export interface PalimnGraphResult {
+  decision: string;
+  abstention_reason?: string | null;
+  confidence: number;
+  verified_answer?: string | null;
+  certificate_id: string;
+  traversal_path: string[];
+  proof_steps: string[];
+  latency_ms: number;
+}
+
+export interface ArenaEvaluationResponse {
+  query: string;
+  scenario_type: string;
+  vector_rag: VectorRagResult;
+  palimn_hydra: PalimnGraphResult;
+  verdict: string;
+  total_latency_ms: number;
+}
+
+export async function evaluateArena(
+  query: string,
+  scenario_type: string = 'custom'
+): Promise<ArenaEvaluationResponse> {
+  const res = await fetch(`${API_BASE}/arena/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, scenario_type }),
+  });
+  if (!res.ok) {
+    throw new Error(`Arena evaluation failed: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchArenaPresets(): Promise<Record<string, any>> {
+  const res = await fetch(`${API_BASE}/arena/presets`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch arena presets: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export interface HopStep {
+  step_number: number;
+  session_id: string;
+  session_date: string;
+  from_node: string;
+  relation: string;
+  to_node: string;
+  evidence: string;
+  confidence: number;
+}
+
+export interface MultiHopWeaverResponse {
+  query: string;
+  source_entity: string;
+  target_entity: string;
+  hops_count: number;
+  causal_chain: HopStep[];
+  synthesized_answer: string;
+  graph_nodes: Array<{ id: string; name: string; type: string; session?: string }>;
+  graph_links: Array<{ source: string; target: string; label: string; session?: string }>;
+  traversal_latency_ms: number;
+}
+
+export async function fetchMultiHopWeaver(
+  query: string,
+  source_entity: string = 'user'
+): Promise<MultiHopWeaverResponse> {
+  const res = await fetch(`${API_BASE}/memory/multi-hop-weaver`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, source_entity }),
+  });
+  if (!res.ok) {
+    throw new Error(`Multi-hop weaver failed: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export interface CostTelemetryData {
+  metric: string;
+  full_context_115k: number;
+  palimn_hydradb: number;
+  savings_percentage: number;
+  unit: string;
+}
+
+export interface CostTelemetryResponse {
+  session_tokens_total: number;
+  retrieved_subgraph_tokens: number;
+  compression_ratio: string;
+  cost_per_query_dollars: Record<string, number>;
+  monthly_cost_10k_queries: Record<string, number>;
+  avg_latency_ms: Record<string, number>;
+  table: CostTelemetryData[];
+}
+
+export async function fetchCostTelemetry(): Promise<CostTelemetryResponse> {
+  const res = await fetch(`${API_BASE}/memory/cost-telemetry`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch cost telemetry: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export interface DecayPoint {
+  day: number;
+  confidence: number;
+  status: string;
+}
+
+export interface DecaySimulateResponse {
+  category: string;
+  half_life_days: number;
+  decay_lambda: number;
+  current_confidence: number;
+  status: string;
+  curve: DecayPoint[];
+}
+
+export async function fetchDecaySimulation(
+  category: string = 'transient_state',
+  days_elapsed: number = 7.0,
+  initial_confidence: number = 0.98
+): Promise<DecaySimulateResponse> {
+  const res = await fetch(`${API_BASE}/memory/decay-simulate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category, days_elapsed, initial_confidence }),
+  });
+  if (!res.ok) {
+    throw new Error(`Decay simulation failed: ${res.statusText}`);
+  }
+  return res.json();
+}
+

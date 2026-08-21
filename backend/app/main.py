@@ -14,6 +14,7 @@ from backend.app.api.chat import router as chat_router
 from backend.app.api.memory import router as memory_router
 from backend.app.api.graph import router as graph_router
 from backend.app.api.benchmark import router as benchmark_router
+from backend.app.api.arena import router as arena_router
 from backend.app.hydra.client import get_hydra_client
 
 # Configure structured logging
@@ -78,6 +79,7 @@ app.include_router(chat_router, prefix="/api")
 app.include_router(memory_router, prefix="/api")
 app.include_router(graph_router, prefix="/api")
 app.include_router(benchmark_router, prefix="/api")
+app.include_router(arena_router, prefix="/api")
 
 
 from pathlib import Path

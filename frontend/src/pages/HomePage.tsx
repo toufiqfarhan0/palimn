@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   ArrowRight,
@@ -81,24 +81,7 @@ const STAGES = [
 ];
 
 export const HomePage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tabFromUrl = searchParams.get('tab');
   const [activeFeatureTab, setActiveFeatureTab] = useState<'arena' | 'weaver' | 'cost' | 'decay' | 'sdk'>('arena');
-
-  useEffect(() => {
-    if (tabFromUrl && ['arena', 'weaver', 'cost', 'decay', 'sdk'].includes(tabFromUrl)) {
-      setActiveFeatureTab(tabFromUrl as any);
-      const el = document.getElementById('interactive-suite');
-      if (el) {
-        setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 50);
-      }
-    }
-  }, [tabFromUrl]);
-
-  const handleTabChange = (tabId: 'arena' | 'weaver' | 'cost' | 'decay' | 'sdk') => {
-    setActiveFeatureTab(tabId);
-    setSearchParams({ tab: tabId });
-  };
 
   return (
     <div className="bg-transparent min-h-screen font-['Plus_Jakarta_Sans',sans-serif]">
@@ -212,7 +195,7 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* ── TRACK 3 MASTER FEATURE SHOWCASE (Interactive Switcher) ── */}
-      <section id="interactive-suite" className="max-w-[1200px] mx-auto px-6 py-20 space-y-8 scroll-mt-24">
+      <section className="max-w-[1200px] mx-auto px-6 py-20 space-y-8">
         <Reveal className="text-center max-w-2xl mx-auto space-y-3">
           <h2 className="text-[32px] sm:text-[40px] font-extrabold text-white tracking-tight">
             Solving the Hard Problems in Agent Memory
@@ -236,7 +219,7 @@ export const HomePage: React.FC = () => {
             return (
               <button
                 key={tab.id}
-                onClick={() => handleTabChange(tab.id as any)}
+                onClick={() => setActiveFeatureTab(tab.id as any)}
                 className={`flex-shrink-0 flex flex-col items-start gap-1 px-4 py-3 rounded-2xl border text-left transition-all duration-200 min-w-[150px] sm:min-w-0 ${
                   isSelected
                     ? `${tab.accentBg} ${tab.accentBorder}`
